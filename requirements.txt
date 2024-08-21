@@ -1,0 +1,12 @@
+numpy==1.26.4
+gym==0.26.2
+ribs==0.7.0
+overcooked_ai==1.1.0
+dask==2.30.0
+distributed==2.30.0
+torch==2.3.1
+hydra-core==1.3.2
+cloudpickle==3.0.0
+matplotlib==3.9.1
+shapely==2.0.4
+qdax==0.3.1
