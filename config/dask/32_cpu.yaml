@@ -1,0 +1,3 @@
+n_workers: 32
+threads_per_worker: 1
+memory_limit: 4 GiB

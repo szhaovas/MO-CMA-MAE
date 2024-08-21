@@ -1,0 +1,2 @@
+_target_: src.envs.arm.arm_manager.ArmManager
+solution_dim: 100

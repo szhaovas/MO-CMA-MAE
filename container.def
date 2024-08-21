@@ -1,0 +1,50 @@
+BootStrap: docker
+From: python:3.9.17-buster
+
+%files
+    requirements.txt
+    CPLEX_Studio201
+
+%post
+    # Apt packages - Note: If we install Python here (as opposed to building
+    # from a Python container) we end up with one of the old versions in the
+    # apt repositories.
+
+    apt-get update
+    apt-get install -y \
+        wget \
+        git \
+        zip \
+        default-jdk
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+
+    # Project
+    PROJECT_ROOT=/usr/project
+    mkdir -p $PROJECT_ROOT/python
+
+    # Move requirements.txt and CPLEX_Studio201 to PROJECT_ROOT
+    mv requirements.txt $PROJECT_ROOT/python
+    mv CPLEX_Studio201 $PROJECT_ROOT/python
+
+    # Python
+    pip3 install --timeout=1000 -r $PROJECT_ROOT/python/requirements.txt
+    #  pip3 install -U "jax[cuda12]==0.4.30"
+    #  pip3 install -U torch==2.3.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
+    python3.9 $PROJECT_ROOT/python/CPLEX_Studio201/python/setup.py install
+
+%environment
+    export PROJECT_ROOT=/usr/project
+
+    # Set X11 display for GUI output
+    export DISPLAY=":1"
+
+    # Set numpy to be single-threaded
+    export OPENBLAS_NUM_THREADS=1
+
+    # Detect package
+    export PYTHONPATH="."
+
+    # Trim memory aggressively
+    # https://github.com/dask/distributed/issues/5279
+    export MALLOC_TRIM_THRESHOLD_=0

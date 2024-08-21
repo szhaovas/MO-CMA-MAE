@@ -1,0 +1,17 @@
+defaults:
+  - _self_
+  - env: sphere
+  - alg: mo_cma_mae
+  - dask: basic
+
+itrs: 5000
+batch_size: 36
+log_arch_freq: 10
+num_trials: 5
+starting_scheduler_path: null # Path to an archive pickle object, used for resuming from a checkpoint.
+starting_itr: 0 # The starting iteration, if starting_archive_path is set, this should be set to a matching iteration.
+seed: 42 # Master seed for the experiment.
+
+hydra:
+  run:
+    dir: ./outputs/${hydra:runtime.choices.env}/${hydra:runtime.choices.alg}/${now:%Y-%m-%d_%H%M%S}

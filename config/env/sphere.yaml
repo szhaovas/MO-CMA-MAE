@@ -1,0 +1,3 @@
+_target_: src.envs.sphere.sphere_manager.SphereManager
+solution_dim: 100
+shift: [-4, 4]

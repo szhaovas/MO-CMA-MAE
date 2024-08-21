@@ -1,0 +1,5 @@
+# This is unrolled and passed to dask's Client() class. So you can add more arguments
+# here.
+n_workers: 2 # Number of workers
+threads_per_worker: 1 # Threads per worker
+memory_limit: 4 GiB # Memory limit per worker

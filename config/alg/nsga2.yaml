@@ -1,0 +1,38 @@
+archive:
+  _target_: src.moribs.archives.NSGA2Archive
+  # solution_dim: will be filled at runtime, see src/main.py
+  objective_dim: 2
+  reference_point: [0, 0]
+  cells: 128
+  # ranges: will be filled at runtime, see src/main.py
+  max_pf_size: 50
+  # seed: will be filled at runtime, see src/main.py
+  samples: 50000
+
+emitters: ${oc.dict.values:._emitter_dict}
+_emitter_dict:
+  # All emitter types specified in defaults list should have a key named <ID> here
+  # (program will throw an error otherwise when instantiating emitters)
+  # These parameters are from the MOME_PGX repo
+  # (see <https://github.com/adaptive-intelligent-robotics/MOME_PGX/blob/main/configs/brax/brax_nsga2.yaml>)
+  e1: # This should match the <ID> in the defaults list
+    num: 5 # Number of emitters of the type specified by <ID> in the defaults list
+    iso_sigma: 0.05
+    line_sigma: 0.5
+    # x0: will be filled at runtime, see src/main.py
+    # batch_size: will be filled at runtime, see src/main.py
+    # seed: will be filled at runtime, see src/main.py
+  e2:
+    num: 0
+    mutation_proportion: 0.6
+    eta: 1
+    batch_size: batch_size
+    # batch_size: will be filled at runtime, see src/main.py
+    # seed: will be filled at runtime, see src/main.py
+
+defaults:
+  # Specify types of emitters as emitters@_emitter_dict.<ID>.type: ...
+  # <ID> can be anything unique (e.g., e1, e2, etc.)
+  - emitters@_emitter_dict.e1.type: isoline_emitter
+  - emitters@_emitter_dict.e2.type: mutation_emitter
+  - _self_

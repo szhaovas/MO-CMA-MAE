@@ -1,0 +1,2 @@
+# This simply points emitter instantiation to the correct targets
+_target_: ribs.emitters.IsoLineEmitter

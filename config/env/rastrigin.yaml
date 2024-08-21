@@ -1,0 +1,4 @@
+_target_: src.envs.rastrigin.rastrigin_manager.RastriginManager
+solution_dim: 100
+shift: [-4, 4]
+A: 10
