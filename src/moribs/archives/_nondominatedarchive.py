@@ -7,6 +7,7 @@ from ._pf_utils import compute_crowding_distances
 import itertools
 
 import numpy as np
+from ribs.archives import CVTArchive
 
 
 class NonDominatedList(list):
@@ -51,11 +52,15 @@ class NonDominatedList(list):
         self._kink_points = None
         self.solutions = []
         self.measures = []
-        self.raw_objectives = []
         self._rng = np.random.default_rng(seed)
 
-        self._discount_factor = init_discount + 1e-8
+        assert 0 < init_discount <= 1
+        self._init_discount = init_discount
         self._alpha = alpha
+        self._discount_factors = []
+
+        self.numvisits = 0
+        self.numdomvisits = 0
 
     @property
     def objectives(self):
@@ -63,28 +68,37 @@ class NonDominatedList(list):
 
     def add(self, solution, f_tuple, measure, prune=True):
         """add `f_tuple` in `self` if it is not dominated in all objectives."""
-        discounted_f_tuple = tuple(self._discount_factor * np.array(f_tuple))
+        f_objs = np.array(f_tuple, dtype=np.float64)
+        cur_objs = np.array(self.objectives)
+        
+        if len(self) == 0:
+            discount_factor = self._init_discount
+        else:
+            cosims = (-f_objs @ cur_objs.T) / (np.linalg.norm(f_objs)*np.linalg.norm(cur_objs, axis=-1))
+            discount_idx = np.argmax(cosims)
+            discount_factor = self._discount_factors[discount_idx]
+        
+        f_objs *= discount_factor
 
-        if not self.dominates(discounted_f_tuple):
-            self.append(discounted_f_tuple)
+        self.numvisits += 1
+        if not self.dominates(f_objs):
+            self.numdomvisits += 1
+            self.append(f_objs)
             self.solutions.append(solution)
             self.measures.append(measure)
-            self.raw_objectives.append(f_tuple)
             self._hypervolume = None
             self._kink_points = None
 
+            self._discount_factors.append((1 - self._alpha) * discount_factor + self._alpha)
+
         if prune:
             self.prune()
-
-        self._discount_factor = (
-            1 - self._alpha
-        ) * self._discount_factor + self._alpha
 
     def remove(self, idx):
         self.pop(idx)
         self.solutions.pop(idx)
         self.measures.pop(idx)
-        self.raw_objectives.pop(idx)
+        self._discount_factors.pop(idx)
         self._hypervolume = None
         self._kink_points = None
 
@@ -115,18 +129,18 @@ class NonDominatedList(list):
                 self.pop(idx)
                 self.solutions.pop(idx)
                 self.measures.pop(idx)
-                self.raw_objectives.pop(idx)
+                self._discount_factors.pop(idx)
         i = 0
         length = len(self)
         while i < length:
             for idx in range(len(self)):
-                if self[idx] == self[i]:
+                if np.all(self[idx] == self[i]):
                     continue
                 if self.dominates_with(idx, self[i]):
                     del self[i]
                     del self.solutions[i]
                     del self.measures[i]
-                    del self.raw_objectives[i]
+                    del self._discount_factors[i]
                     i -= 1
                     length -= 1
                     break
@@ -447,7 +461,19 @@ class NonDominatedList(list):
         Else if not in domain, return distance to the reference point
         dominating area times -1.
         """
-        contribution = self.contributing_hypervolume(f_tuple)
+        f_objs = np.array(f_tuple, dtype=np.float64)
+        cur_objs = np.array(self.objectives)
+        
+        if len(self) == 0:
+            discount_factor = self._init_discount
+        else:
+            cosims = (-f_objs @ cur_objs.T) / (np.linalg.norm(f_objs)*np.linalg.norm(cur_objs, axis=-1))
+            discount_idx = np.argmax(cosims)
+            discount_factor = self._discount_factors[discount_idx]
+        
+        f_objs *= discount_factor
+
+        contribution = self.contributing_hypervolume(f_objs)
         assert contribution >= 0
         if contribution:
             return (contribution, 2) if len(self) == 0 else (contribution, 1)

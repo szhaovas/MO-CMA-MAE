@@ -3,12 +3,12 @@ archive:
   # solution_dim: will be filled at runtime, see src/main.py
   objective_dim: 2
   reference_point: [0, 0]
-  cells: 128
+  cells: 1000
   # ranges: will be filled at runtime, see src/main.py
   bias_sampling: true
   init_discount: 1
   alpha: 1
-  max_pf_size: 50
+  max_pf_size: 10
   hvi_cutoff_threshold: null
   # seed: will be filled at runtime, see src/main.py
   samples: 50000
@@ -21,8 +21,8 @@ _emitter_dict:
   # (see <https://github.com/adaptive-intelligent-robotics/MOME_PGX/blob/main/configs/brax/brax_mome.yaml>)
   e1: # This should match the <ID> in the defaults list
     num: 5 # Number of emitters of the type specified by <ID> in the defaults list
-    iso_sigma: 0.1
-    line_sigma: 1
+    iso_sigma: 0.05
+    line_sigma: 0.5
     # x0: will be filled at runtime, see src/main.py
     # batch_size: will be filled at runtime, see src/main.py
     # seed: will be filled at runtime, see src/main.py
