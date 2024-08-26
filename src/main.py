@@ -58,6 +58,20 @@ def save_heatmap(archive, heatmap_path):
     plt.close(plt.gcf())
 
 
+def save_pfs(archive, heatmap_path):
+    _, data = archive.retrieve_single([0, 0])
+    pf = data["pf"]
+    _, t_data = archive.main.retrieve_single([0, 0])
+    t_pf = t_data['pf']
+    
+    plt.figure(figsize=(8, 6))
+    objs = np.array(sorted(pf.objectives, key=lambda objs: objs[0]))
+    t_objs = np.array(sorted(t_pf.objectives, key=lambda objs: objs[0]))
+    plt.step(objs[:, 0], objs[:, 1], "b-", where="pre")
+    plt.step(t_objs[:, 0], t_objs[:, 1], "b-", alpha=0.2, where="pre")
+    plt.savefig(heatmap_path)
+
+
 def exp_func(
     cfg: DictConfig,
     runtime_env: str,
@@ -200,6 +214,10 @@ def exp_func(
                 scheduler.archive,
                 os.path.join(trial_outdir, f"heatmap_{itr:08d}.png"),
             )
+            # save_pfs(
+            #     scheduler.archive,
+            #     os.path.join(trial_outdir, f"pfs_{itr:08d}.png"),
+            # )
 
             with open(summary_filename, "a") as summary_file:
                 writer = csv.writer(summary_file)
@@ -222,10 +240,13 @@ def exp_func(
             #     open(os.path.join(trial_outdir, f"archive_{itr:08d}.pkl"), "wb")
             # )
 
-            pickle.dump(
-                scheduler,
-                open(os.path.join(trial_outdir, f"scheduler_{itr:08d}.pkl"), "wb")
-            )
+            # pickle.dump(
+            #     scheduler,
+            #     open(os.path.join(trial_outdir, f"scheduler_{itr:08d}.pkl"), "wb")
+            # )
+
+            if np.isclose(scheduler.archive.stats.coverage, 0):
+                __import__("pdb").set_trace()
 	    
             # np.savetxt(os.path.join(trial_outdir, f"sols_{itr:08d}.txt"), sols, delimiter=',')
             # np.savetxt(os.path.join(trial_outdir, f"objs_{itr:08d}.txt"), objs, delimiter=',')
@@ -240,7 +261,7 @@ def main(cfg: DictConfig):
     runtime_alg = hydra.core.hydra_config.HydraConfig.get().runtime.choices["alg"]
     runtime_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
 
-    # client = Client(**cfg["dask"])
+    client = Client(**cfg["dask"])
 
     # Fill ranges at runtime according to env and/or solution_dim, and instantiate env.
     solution_dim = cfg["env"]["solution_dim"]
