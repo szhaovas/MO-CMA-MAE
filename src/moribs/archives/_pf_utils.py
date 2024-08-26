@@ -190,8 +190,8 @@ def batch_entry_pf(indices, new_data, add_info, extra_args, occupied, cur_data):
 
         add_info["value"][i], add_info["status"][i] = value, status
 
-    is_new = add_info["status"] == 2
-    improve_existing = add_info["status"] == 1
+    is_new = ~occupied
+    improve_existing = occupied & (add_info["status"] == 1)
     # Even if a solution passed the previous add check, it may still
     # have been dominated by another solution within batch assigned
     # to the same archive cell.
@@ -223,6 +223,7 @@ def batch_entry_pf(indices, new_data, add_info, extra_args, occupied, cur_data):
         # while NonDominatedList minimizes objectives
         # The solutions are actually inserted here instead of at the end of
         # ArrayStore.add() as in vanilla pyribs.
+        # __import__("pdb").set_trace()
         pf.add(new_sol, -new_obj, new_meas)
 
     # Pass downstream data for calculating MOQD scores and other archive status updates.
@@ -285,5 +286,8 @@ def cvt_archive_heatmap(*args, **kwargs):
     archive_temp._store._fields["objective"] = archive_temp._store._fields.pop(
         "hypervolume"
     )
+    # archive_temp._store._fields["objective"] = np.array([pf.numvisits for pf in archive_temp._store._fields.pop(
+    #     "pf"
+    # )])
     ribs.visualize.cvt_archive_heatmap(archive_temp, *args[1:], **kwargs)
 

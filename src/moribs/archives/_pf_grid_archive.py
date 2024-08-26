@@ -266,6 +266,10 @@ class PFGridArchive(GridArchive):
         ``new_best_elite["hypervolume"]``.
         """
         self._objective_sum = new_objective_sum
+
+        if new_best_index is None:
+            return
+
         new_qd_score = (
             self._objective_sum - self.dtype(len(self)) * self._qd_score_offset
         )

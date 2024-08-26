@@ -95,46 +95,15 @@ class MOCMAMEArchive(PFCVTArchive):
         )
 
     def qd_update(self, **fields):
-        """Re-add solutions, objectives, and measures stored in the COMO-CMA-ES population to the
-        passive archive.
-        The passive archive is updated by first emptying and then re-adding NSGA2Population.population.
-
-        FIXME: Maybe more efficient to identify changed individuals and modify those only?
-
-        Returns:
-            Doesn't return add_info since COMO-CMA-ES uses UHVI values calculated w.r.t. the entire PF.
+        """No need for qd_update since passive and main archives are always in sync.
         """
-        self.clear()
-        data = {
-            "solution": np.concatenate([pf.solutions for pf in np.array(self.main.data("pf"))]),
-            # Negated because NonDominatedList stores negated objectives
-            "objective": -np.concatenate([pf.raw_objectives for pf in np.array(self.main.data("pf"))]),
-            "measures": np.concatenate([pf.measures for pf in np.array(self.main.data("pf"))]),
-            **fields,
-        }
-
-        add_info = self._store.add(
-            self.index_of(data["measures"]),
-            data,
-            {
-                "hvi_cutoff_threshold": self.hvi_cutoff_threshold,
-                # The ArchiveBase class maintains "_objective_sum" when calculating
-                # sum, so we use self._objective_sum here to stay compatible.
-                "hypervolume_sum": self._objective_sum,
-            },
-            [batch_entry_pf, compute_moqd_score, compute_best_index],
-        )
-
-        # Updates passive archive QD metrics.
-        hypervolume_sum = add_info.pop("hypervolume_sum")
-        best_index = add_info.pop("best_index")
-        if not np.all(add_info["status"] == 0):
-            self._stats_update(hypervolume_sum, best_index)
+        pass
 
     def add_single(self, solution, objective, measures, **fields):
         raise NotImplementedError("Please use batch add() for COMO-CMA-ES.")
 
     def add(self, solution, objective, measures, **fields):
+        super().add(solution, objective, measures, **fields)
         return self.main.add(solution, objective, measures, **fields)
 
     @property
