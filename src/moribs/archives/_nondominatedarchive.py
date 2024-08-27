@@ -5,9 +5,12 @@
 from ._hv import HyperVolume
 from ._pf_utils import compute_crowding_distances
 import itertools
-
 import numpy as np
-from ribs.archives import CVTArchive
+import logging
+from ribs.archives._add_status import AddStatus
+
+
+logger = logging.getLogger(__name__)
 
 
 class NonDominatedList(list):
@@ -66,33 +69,38 @@ class NonDominatedList(list):
     def objectives(self):
         return [tuple(map(lambda x: -x, row)) for row in self]
 
-    def add(self, solution, f_tuple, measure, prune=True):
+    def add(self, solution, f_tuple, measure):
         """add `f_tuple` in `self` if it is not dominated in all objectives."""
-        f_objs = np.array(f_tuple, dtype=np.float64)
-        cur_objs = np.array(self.objectives)
+        f_objs = -np.array(f_tuple, dtype=np.float64)
+        assert np.all(f_objs <= 0)
+        cur_objs = np.array(self)
         
         if len(self) == 0:
             discount_factor = self._init_discount
         else:
-            cosims = (-f_objs @ cur_objs.T) / (np.linalg.norm(f_objs)*np.linalg.norm(cur_objs, axis=-1))
+            cosims = (f_objs @ cur_objs.T) / (np.linalg.norm(f_objs)*np.linalg.norm(cur_objs, axis=1))
             discount_idx = np.argmax(cosims)
             discount_factor = self._discount_factors[discount_idx]
         
         f_objs *= discount_factor
 
         self.numvisits += 1
-        if not self.dominates(f_objs):
-            self.numdomvisits += 1
-            self.append(f_objs)
-            self.solutions.append(solution)
-            self.measures.append(measure)
-            self._hypervolume = None
-            self._kink_points = None
 
-            self._discount_factors.append((1 - self._alpha) * discount_factor + self._alpha)
+        if self.dominates(f_objs):
+            return False
 
-        if prune:
-            self.prune()
+        self.numdomvisits += 1
+        self.append(f_objs)
+        self.solutions.append(solution)
+        self.measures.append(measure)
+        self._hypervolume = None
+        self._kink_points = None
+
+        self._discount_factors.append((1 - self._alpha) * discount_factor + self._alpha)
+
+        self.prune()
+
+        return True
 
     def remove(self, idx):
         self.pop(idx)
@@ -102,22 +110,49 @@ class NonDominatedList(list):
         self._hypervolume = None
         self._kink_points = None
 
-    # def add_list(self, list_of_solutions, list_of_f_tuples, list_of_f_measures):
-    #     """
-    #     add list of f_tuples, not using the add method to avoid calling
-    #     self.prune() several times.
-    #     """
-    #     for solution, f_tuple, measure in zip(
-    #         list_of_solutions, list_of_f_tuples, list_of_f_measures
-    #     ):
-    #         f_tuple = tuple(f_tuple)
-    #         if not self.dominates(f_tuple):
-    #             self.append(f_tuple)
-    #             self.solutions.append(solution)
-    #             self.measures.append(measure)
-    #             self._hypervolume = None
-    #             self._kink_points = None
-    #     self.prune()
+    def add_list(self, list_of_solutions, list_of_f_tuples, list_of_f_measures):
+        """
+        add list of f_tuples, not using the add method to avoid calling
+        self.prune() several times.
+
+        discount factors are calculated at the start because hypervolume improvements 
+        were calculated w.r.t. the discount factors before the add.
+        """
+        f_objs = -np.array(list_of_f_tuples, dtype=np.float64)
+        assert np.all(f_objs <= 0)
+        cur_objs = np.array(self)
+
+        batch_size = f_objs.shape[0]
+        
+        if len(self) == 0:
+            discount_factor = np.full((batch_size,1), self._init_discount)
+        else:
+            cosims = (f_objs @ cur_objs.T) / np.outer(np.linalg.norm(f_objs, axis=1),np.linalg.norm(cur_objs, axis=1))
+            discount_idx = np.argmax(cosims, axis=1)
+            discount_factor = np.array(self._discount_factors)[discount_idx].reshape((-1,1))
+        
+        f_objs *= discount_factor
+
+        added = np.full(batch_size, False)
+        for i, (sol, obj, meas, dis) in enumerate(zip(
+            list_of_solutions, f_objs, list_of_f_measures, discount_factor
+        )):
+            self.numvisits += 1
+            if not self.dominates(obj):
+                self.numdomvisits += 1
+                self.append(obj)
+                self.solutions.append(sol)
+                self.measures.append(meas)
+                self._hypervolume = None
+                self._kink_points = None
+
+                self._discount_factors.append((1 - self._alpha) * dis + self._alpha)
+
+                added[i] = True
+
+        self.prune()
+
+        return added
 
     def prune(self):
         """
@@ -461,23 +496,14 @@ class NonDominatedList(list):
         Else if not in domain, return distance to the reference point
         dominating area times -1.
         """
-        f_objs = np.array(f_tuple, dtype=np.float64)
-        cur_objs = np.array(self.objectives)
-        
-        if len(self) == 0:
-            discount_factor = self._init_discount
-        else:
-            cosims = (-f_objs @ cur_objs.T) / (np.linalg.norm(f_objs)*np.linalg.norm(cur_objs, axis=-1))
-            discount_idx = np.argmax(cosims)
-            discount_factor = self._discount_factors[discount_idx]
-        
-        f_objs *= discount_factor
+        f_objs = -np.array(f_tuple, dtype=np.float64)
+        assert np.all(f_objs <= 0)
 
         contribution = self.contributing_hypervolume(f_objs)
         assert contribution >= 0
         if contribution:
-            return (contribution, 2) if len(self) == 0 else (contribution, 1)
-        return 0, 0
+            return (contribution, AddStatus.NEW) if len(self) == 0 else (contribution, AddStatus.IMPROVE_EXISTING)
+        return 0, AddStatus.NOT_ADDED
 
     # @staticmethod
     # def _random_archive(max_size=500, p_ref_point=0.5):
