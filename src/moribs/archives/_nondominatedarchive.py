@@ -60,10 +60,9 @@ class NonDominatedList(list):
         assert 0 < init_discount <= 1
         self._init_discount = init_discount
         self._alpha = alpha
-        self._discount_factors = []
+        self.discount_factors = []
 
         self.numvisits = 0
-        self.numdomvisits = 0
 
     @property
     def objectives(self):
@@ -80,7 +79,7 @@ class NonDominatedList(list):
         else:
             cosims = (f_objs @ cur_objs.T) / (np.linalg.norm(f_objs)*np.linalg.norm(cur_objs, axis=1))
             discount_idx = np.argmax(cosims)
-            discount_factor = self._discount_factors[discount_idx]
+            discount_factor = self.discount_factors[discount_idx]
         
         f_objs *= discount_factor
 
@@ -89,14 +88,13 @@ class NonDominatedList(list):
         if self.dominates(f_objs):
             return False
 
-        self.numdomvisits += 1
         self.append(f_objs)
         self.solutions.append(solution)
         self.measures.append(measure)
         self._hypervolume = None
         self._kink_points = None
 
-        self._discount_factors.append((1 - self._alpha) * discount_factor + self._alpha)
+        self.discount_factors.append((1 - self._alpha) * discount_factor + self._alpha)
 
         self.prune()
 
@@ -106,7 +104,7 @@ class NonDominatedList(list):
         self.pop(idx)
         self.solutions.pop(idx)
         self.measures.pop(idx)
-        self._discount_factors.pop(idx)
+        self.discount_factors.pop(idx)
         self._hypervolume = None
         self._kink_points = None
 
@@ -129,7 +127,7 @@ class NonDominatedList(list):
         else:
             cosims = (f_objs @ cur_objs.T) / np.outer(np.linalg.norm(f_objs, axis=1),np.linalg.norm(cur_objs, axis=1))
             discount_idx = np.argmax(cosims, axis=1)
-            discount_factor = np.array(self._discount_factors)[discount_idx].reshape((-1,1))
+            discount_factor = np.array(self.discount_factors)[discount_idx].reshape((-1,1))
         
         f_objs *= discount_factor
 
@@ -139,14 +137,13 @@ class NonDominatedList(list):
         )):
             self.numvisits += 1
             if not self.dominates(obj):
-                self.numdomvisits += 1
                 self.append(obj)
                 self.solutions.append(sol)
                 self.measures.append(meas)
                 self._hypervolume = None
                 self._kink_points = None
 
-                self._discount_factors.append((1 - self._alpha) * dis + self._alpha)
+                self.discount_factors.append((1 - self._alpha) * dis + self._alpha)
 
                 added[i] = True
 
@@ -164,7 +161,7 @@ class NonDominatedList(list):
                 self.pop(idx)
                 self.solutions.pop(idx)
                 self.measures.pop(idx)
-                self._discount_factors.pop(idx)
+                self.discount_factors.pop(idx)
         i = 0
         length = len(self)
         while i < length:
@@ -175,7 +172,7 @@ class NonDominatedList(list):
                     del self[i]
                     del self.solutions[i]
                     del self.measures[i]
-                    del self._discount_factors[i]
+                    del self.discount_factors[i]
                     i -= 1
                     length -= 1
                     break

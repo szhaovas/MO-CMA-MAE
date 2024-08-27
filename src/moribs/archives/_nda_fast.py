@@ -107,6 +107,8 @@ class BiobjectiveNondominatedSortedList(list):
 
     def __init__(
         self,
+        init_discount,
+        alpha,
         maxlen=None,
         list_of_f_pairs=None,
         reference_point=None,
@@ -158,7 +160,7 @@ class BiobjectiveNondominatedSortedList(list):
         self._maxlen = maxlen
         self._rng = np.random.default_rng(seed)
 
-        self.prune()  # remove dominated entries, uses in_domain, hence ref-point
+        # self.prune()  # remove dominated entries, uses in_domain, hence ref-point
         if self.maintain_contributing_hypervolumes:
             self._contributing_hypervolumes = self.contributing_hypervolumes
             raise NotImplementedError(
@@ -168,6 +170,11 @@ class BiobjectiveNondominatedSortedList(list):
             self._contributing_hypervolumes = []
         self._set_HV()
         self.make_expensive_asserts and self._asserts()
+
+        self._init_discount = init_discount
+        self._alpha = alpha
+
+        self.numvisits = 0
 
     @property
     def objectives(self):
@@ -180,8 +187,12 @@ class BiobjectiveNondominatedSortedList(list):
     @property
     def measures(self):
         return [i["measure"] for i in self.infos]
+    
+    @property
+    def discount_factors(self):
+        return [i["discount_factor"] for i in self.infos]
 
-    def add(self, solution, f_pair, measure, prune=False):
+    def add(self, solution, f_pair, measure, addback_discount_factor=None):
         """insert `f_pair` in `self` if it is not (weakly) dominated.
 
         Return index at which the insertion took place or `None`. The
@@ -214,30 +225,54 @@ class BiobjectiveNondominatedSortedList(list):
         [-1, 2, 3]
 
         """
-        if (solution is None) or (measure is None):
-            info = None
-        else:
-            info = {"solution": solution, "measure": measure}
-        f_pair = list(f_pair)  # convert array to list
-        # __import__("pdb").set_trace()
         if len(f_pair) != 2:
             raise ValueError(
                 "argument `f_pair` must be of length 2, was" " ``%s``" % str(f_pair)
             )
-        if not self.in_domain(f_pair):
-            self._removed = [f_pair]
+
+        # Only called from hypervolume_improvement. Don't negate, don't downscale
+        if (solution is None) or (measure is None):
+            f_objs = np.array(f_pair, dtype=np.float64)
+            discount_factor = 1
+            info = None
+        # Called from outside, negate and downscale
+        else:
+            f_objs = -np.array(f_pair, dtype=np.float64)
+            cur_objs = np.array(self)
+        
+            if not (addback_discount_factor is None):
+                discount_factor = 1
+            elif len(self) == 0:
+                discount_factor = self._init_discount
+            else:
+                cosims = (f_objs @ cur_objs.T) / (np.linalg.norm(f_objs)*np.linalg.norm(cur_objs, axis=1))
+                discount_idx = np.argmax(cosims)
+                discount_factor = self.discount_factors[discount_idx]
+            
+            info = {
+                "solution": solution, 
+                "measure": measure, 
+                "discount_factor": ((1 - self._alpha) * discount_factor + self._alpha) if addback_discount_factor is None else addback_discount_factor
+            }
+
+        assert np.all(f_objs <= 0)
+        f_objs *= discount_factor
+        f_objs = list(f_objs)
+
+        if not self.in_domain(f_objs):
+            self._removed = [(f_objs, info)]
             return None
-        idx = self.bisect_left(f_pair)
-        if self.dominates_with(idx - 1, f_pair) or self.dominates_with(idx, f_pair):
-            if f_pair not in self[idx - 1 : idx + 1]:
-                self._removed = [f_pair]
+        idx = self.bisect_left(f_objs)
+        if self.dominates_with(idx - 1, f_objs) or self.dominates_with(idx, f_objs):
+            if f_objs not in self[idx - 1 : idx + 1]:
+                self._removed = [(f_objs, info)]
             return None
-        assert idx == len(self) or not f_pair == self[idx]
+        assert idx == len(self) or not f_objs == self[idx]
         # here f_pair now is non-dominated
-        self._add_at(idx, f_pair, info)
+        self._add_at(idx, f_objs, info)
         # self.make_expensive_asserts and self._asserts()
 
-        if prune:
+        if not info is None:
             self.prune()
 
         return idx
@@ -270,7 +305,7 @@ class BiobjectiveNondominatedSortedList(list):
             # del self[idx]  # slow
             idx2 += 1  # delete later in a chunk
         self._subtract_HV(idx, idx2)
-        self._removed = self[idx:idx2]
+        self._removed = list(zip(self[idx:idx2], self._infos[idx:idx2]))
         self[idx] = f_pair  # on long lists [.] is much cheaper than insert
         if self._infos is not None:  # if the list exists it needs to be updated
             self._infos[idx] = info
@@ -282,6 +317,7 @@ class BiobjectiveNondominatedSortedList(list):
         assert self._infos is None or len(self) == len(self.infos) == len(
             self._infos
         ), (self._infos, len(self._infos), len(self.infos))
+        self.numvisits += 1
         # assert len(self) == len(self.infos), (self._infos, self.infos, len(self.infos), len(self))
         # caveat: len(self.infos) creates a list if self._infos is None
         # self.make_expensive_asserts and self._asserts()
@@ -318,12 +354,12 @@ class BiobjectiveNondominatedSortedList(list):
         """
         idx = self.index(f_pair)
         self._subtract_HV(idx)
-        self._removed = [self[idx]]
+        self._removed = [(self[idx], self._infos[idx])]
         del self[idx]  # == list.remove(self, f_pair)
         if self._infos:
             del self._infos[idx]
 
-    def add_list(self, list_of_f_pairs):
+    def add_list(self, list_of_solutions, list_of_f_pairs, list_of_measures, list_of_discounts):
         """insert a list of f-pairs which doesn't need to be sorted.
 
         This is just a shortcut for looping over `add`, but `discarded`
@@ -351,8 +387,8 @@ class BiobjectiveNondominatedSortedList(list):
         """
         removed = []
         # should we better create a non-dominated list and do a merge?
-        for f_pair in list_of_f_pairs:
-            if self.add(solution=None, f_pair=f_pair, measure=None) is not None:
+        for solution, f_pair, measure, discount in zip(list_of_solutions, list_of_f_pairs, list_of_measures, list_of_discounts):
+            if self.add(solution=solution, f_pair=[-f_pair[0],-f_pair[1]], measure=measure, addback_discount_factor=discount) is not None:
                 removed += [self._removed]  # slightly faster than .extend
         self._removed = removed  # could contain elements of `list_of_f_pairs`
         self.make_expensive_asserts and self._asserts()
@@ -718,13 +754,15 @@ class BiobjectiveNondominatedSortedList(list):
         Overall this amounts to the uncrowded hypervolume improvement,
         see https://arxiv.org/abs/1904.08823
         """
-        f_pair = list(f_pair)
-        dist = self.distance_to_pareto_front(f_pair)
+        f_objs = -np.array(f_pair, dtype=np.float64)
+        assert np.all(f_objs <= 0)
+        f_objs = list(f_objs)
+        dist = self.distance_to_pareto_front(f_objs)
         if dist:
             return -dist, 0
         state = self._state()
         removed = self.discarded  # to get back previous state
-        added = self.add(solution=None, f_pair=f_pair, measure=None) is not None
+        added = self.add(solution=None, f_pair=f_objs, measure=None) is not None
         if added and self.discarded is not removed:
             add_back = self.discarded
         else:
@@ -732,16 +770,25 @@ class BiobjectiveNondominatedSortedList(list):
         assert len(add_back) + len(self) - added == state[0]
         hv1 = self.hypervolume
         if added:
-            self.remove(f_pair)
+            self.remove(f_objs)
         if add_back:
-            self.add_list(add_back)
+            list_of_infos = [tup[1] for tup in add_back]
+            list_of_solutions = [i["solution"] for i in list_of_infos]
+            list_of_f_pairs = [tup[0] for tup in add_back]
+            list_of_measures = [i["measure"] for i in list_of_infos]
+            list_of_discounts = [i["discount_factor"] for i in list_of_infos]
+            self.add_list(list_of_solutions=list_of_solutions, list_of_f_pairs=list_of_f_pairs, list_of_measures=list_of_measures, list_of_discounts=list_of_discounts)
         self._removed = removed
         if self.hypervolume_computation_float_type is not float and (
             self.hypervolume_final_float_type is not float
         ):
+            if state != self._state():
+                __import__("pdb").set_trace()
             assert state == self._state()
 
         hvi = self.hypervolume_computation_float_type(hv1) - self.hypervolume
+        if np.any([self.infos[i] is None for i in range(len(self))]):
+            __import__("pdb").set_trace()
         return (hvi, 2) if len(self) == 0 else (hvi, 1)
 
     def _set_HV(self):
@@ -903,7 +950,7 @@ class BiobjectiveNondominatedSortedList(list):
             if self.in_domain(self[i]):
                 break
             i += 1
-        removed += self[0:i]
+        removed += list(zip(self[0:i], self._infos[0:i]))
         del self[0:i]
         if self._infos:
             del self._infos[0:i]
@@ -932,7 +979,7 @@ class BiobjectiveNondominatedSortedList(list):
                         ir -= 1  # skip self[ir] as removed as it is in self
                     else:
                         break
-            removed += self[i0r:ir]
+            removed += list(zip(self[i0r:ir], self._infos[i0r:ir]))
             del self[i0:i]
             if self._infos:
                 del self._infos[i0:i]
@@ -946,7 +993,7 @@ class BiobjectiveNondominatedSortedList(list):
                     np.array(self.objectives), boundary_inf=True
                 )
                 rm_idx = np.argsort(crowding_distances)[0]
-                removed += [self[rm_idx]]
+                removed += [(self[rm_idx], self._infos[rm_idx])]
                 del self[rm_idx]
                 if self._infos:
                     del self._infos[rm_idx]

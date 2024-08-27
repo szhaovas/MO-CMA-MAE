@@ -170,13 +170,13 @@ def batch_entry_pf(indices, new_data, add_info, extra_args, occupied, cur_data):
             f"\t{new_data['objective']}".replace("\n", "\n\t")
         )
 
-    for i, (multi_obj, pf, ocpd) in enumerate(zip(new_data["objective"], cur_data["pf"], occupied)):
+    for i, (obj, pf, ocpd) in enumerate(zip(new_data["objective"], cur_data["pf"], occupied)):
         # Cannot add to PF here because adding here modifies PF for later
         #   solutions and creates bias.
         if ocpd:
-            value, status = pf.hypervolume_improvement(-multi_obj)
+            value, status = pf.hypervolume_improvement(obj)
         else:
-            value, status = abs(np.prod(multi_obj)), 2
+            value, status = abs(np.prod(obj)), AddStatus.NEW
 
         # If a solution has IMPROVE_EXISTING add status, and
         # its hypervolume improvement value < hvi_cutoff_threshold,
@@ -192,51 +192,45 @@ def batch_entry_pf(indices, new_data, add_info, extra_args, occupied, cur_data):
 
     is_new = ~occupied
     improve_existing = occupied & (add_info["status"] == 1)
-    # Even if a solution passed the previous add check, it may still
-    # have been dominated by another solution within batch assigned
-    # to the same archive cell.
-    dominators_within_batch = find_dominator(indices, new_data["objective"])
-    nondominated_within_batch = [
-        True if len(dom) == 0 else False for dom in dominators_within_batch.values()
-    ]
-    can_insert = (is_new | improve_existing) & nondominated_within_batch
+    can_insert = (is_new | improve_existing)
 
     logger.info(
-        f"Among {batch_size} generated solutions, {sum(is_new)} discover new cells, and {sum(improve_existing)} improve existing cells.\n"
-        f"\t{sum(~np.array(nondominated_within_batch))} are dominated by other generated solutions within same archive cells.\n"
-        f"\tOverall, {sum(can_insert)} solutions passed the add test and will be added."
+        f"Among {batch_size} generated solutions, {sum(is_new)} discover new cells, and {sum(improve_existing)} improve existing cells."
     )
 
     # Return early if we cannot insert anything -- continuing would actually
     # throw a ValueError in aggregate() since index[can_insert] would be empty.
     if not np.any(can_insert):
         return np.array([], dtype=np.int32), {}, add_info
-    filtered_pf = cur_data["pf"][can_insert]
 
-    for new_sol, new_obj, new_meas, pf in zip(
+    actually_inserted = np.full(np.sum(can_insert), True)
+    for i, (new_sol, new_obj, new_meas, pf) in enumerate(zip(
         new_data["solution"][can_insert],
         new_data["objective"][can_insert],
         new_data["measures"][can_insert],
-        filtered_pf,
-    ):
+        cur_data["pf"][can_insert],
+    )):
         # Negated because objectives are in [0,100] range and need to be maximized
         # while NonDominatedList minimizes objectives
         # The solutions are actually inserted here instead of at the end of
         # ArrayStore.add() as in vanilla pyribs.
         # __import__("pdb").set_trace()
-        pf.add(new_sol, -new_obj, new_meas)
+        added_at = pf.add(new_sol, new_obj, new_meas)
+        if added_at is None:
+            actually_inserted[i] = False
 
     # Pass downstream data for calculating MOQD scores and other archive status updates.
     # Remove duplicate indices (when multiple solutions are added to the same archive cell).
-    _, unique_indices = np.unique(indices[can_insert], return_index=True)
+    updated_indices, first_instance_indices = np.unique(indices[can_insert][actually_inserted], return_index=True)
+    updated_pfs = cur_data["pf"][can_insert][actually_inserted][first_instance_indices]
     downstream_data = {
-        "pf": filtered_pf[unique_indices],
+        "pf": updated_pfs,
         "hypervolume": list(
-            map(lambda pf: pf.hypervolume, filtered_pf[unique_indices])
+            map(lambda pf: pf.hypervolume, updated_pfs)
         ),
     }
 
-    return indices[can_insert][unique_indices], downstream_data, add_info
+    return updated_indices, downstream_data, add_info
 
 
 def compute_moqd_score(indices, new_data, add_info, extra_args, occupied, cur_data):
