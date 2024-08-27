@@ -18,6 +18,8 @@ from ._pf_utils import (
     batch_entry_pf,
     compute_moqd_score,
     compute_best_index,
+    compute_total_numvisits,
+    compute_max_numvisits,
 )
 
 
@@ -85,7 +87,7 @@ class PFCVTArchive(CVTArchive):
             the maximum Pareto Front size.
         """
         self._store = ArrayStore(
-            field_desc={"pf": ((), object), "hypervolume": ((), np.float64)},
+            field_desc={"pf": ((), object), "hypervolume": ((), np.float64), "numvisits": ((), np.int64)},
             capacity=self._cells,
         )
 
@@ -99,6 +101,8 @@ class PFCVTArchive(CVTArchive):
             self._store._fields["pf"][i] = BiobjectiveNondominatedSortedList(
                 init_discount=init_discount, alpha=alpha, maxlen=max_pf_size, reference_point=reference_point, seed=seed
             )
+        
+        self._total_numvisits = 0
 
     @property
     def objective_dim(self):
@@ -119,6 +123,10 @@ class PFCVTArchive(CVTArchive):
     @property
     def bias_sampling(self):
         return self._bias_sampling
+    
+    @property
+    def total_numvisits(self):
+        return self._total_numvisits
 
     def add_single(self, solution, objective, measures, **fields):
         """Inserts a single solution into the archive. Currently
@@ -218,15 +226,17 @@ class PFCVTArchive(CVTArchive):
                 # The ArchiveBase class maintains "_objective_sum" when calculating
                 # sum, so we use self._objective_sum here to stay compatible.
                 "hypervolume_sum": self._objective_sum,
+                "total_numvisits": self.total_numvisits
             },
-            [batch_entry_pf, compute_moqd_score, compute_best_index],
+            [batch_entry_pf, compute_moqd_score, compute_best_index, compute_total_numvisits, compute_max_numvisits],
         )
 
         hypervolume_sum = add_info.pop("hypervolume_sum")
         # This is the best_index among new data
         best_index = add_info.pop("best_index")
+        total_numvisits = add_info.pop("total_numvisits")
         if not np.all(add_info["status"] == 0):
-            self._stats_update(hypervolume_sum, best_index)
+            self._stats_update(hypervolume_sum, best_index, total_numvisits)
 
         return add_info
 
@@ -272,11 +282,12 @@ class PFCVTArchive(CVTArchive):
 
         return {"solution": np.array(solutions)}
 
-    def _stats_update(self, new_objective_sum, new_best_index):
+    def _stats_update(self, new_objective_sum, new_best_index, new_total_numvisits):
         """Changes ``new_best_elite["objective"]`` to
         ``new_best_elite["hypervolume"]``.
         """
         self._objective_sum = new_objective_sum
+        self._total_numvisits = new_total_numvisits
 
         if new_best_index is None:
             return

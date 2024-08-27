@@ -23,7 +23,7 @@ _emitter_dict:
     sigma0: 0.5
     ranker: "imp"
     selection_rule: "mu"
-    restart_rule: "basic"
+    restart_rule: "cycle"
     # batch_size: will be filled at runtime, see src/main.py
     # seed: will be filled at runtime, see src/main.py
   e2: # This should match the <ID> in the defaults list

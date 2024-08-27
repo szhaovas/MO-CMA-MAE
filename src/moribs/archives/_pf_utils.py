@@ -228,6 +228,9 @@ def batch_entry_pf(indices, new_data, add_info, extra_args, occupied, cur_data):
         "hypervolume": list(
             map(lambda pf: pf.hypervolume, updated_pfs)
         ),
+        "numvisits": list(
+            map(lambda pf: pf.numvisits, updated_pfs)
+        )
     }
 
     return updated_indices, downstream_data, add_info
@@ -272,16 +275,39 @@ def compute_best_index(indices, new_data, add_info, extra_args, occupied, cur_da
     return indices, new_data, add_info
 
 
+def compute_total_numvisits(indices, new_data, add_info, extra_args, occupied, cur_data):
+    cur_total_numvisits = extra_args["total_numvisits"]
+    if len(indices) == 0:
+        add_info["total_numvisits"] = cur_total_numvisits
+    else:
+        cur_numvisits = cur_data["numvisits"]
+        cur_numvisits[~occupied] = 0
+        add_info["total_numvisits"] = cur_total_numvisits + np.sum(
+            new_data["numvisits"] - cur_numvisits
+        )
+    return indices, new_data, add_info
+
+
+def compute_max_numvisits(indices, new_data, add_info, extra_args, occupied, cur_data):
+    # pylint: disable = unused-argument
+    if len(indices) == 0:
+        add_info["max_numvisits"] = None
+    else:
+        new_max_numvisits = np.max(new_data["numvisits"])
+        add_info["max_numvisits"] = new_max_numvisits
+    return indices, new_data, add_info
+
+
 def cvt_archive_heatmap(*args, **kwargs):
     """Same as in vanilla pyribs except uses archive["hypervolume"] for heatmap color
     instead of archive["objective"].
     """
     archive_temp = copy.deepcopy(args[0])
-    archive_temp._store._fields["objective"] = archive_temp._store._fields.pop(
-        "hypervolume"
-    )
-    # archive_temp._store._fields["objective"] = np.array([pf.numvisits for pf in archive_temp._store._fields.pop(
-    #     "pf"
-    # )])
+    # archive_temp._store._fields["objective"] = archive_temp._store._fields.pop(
+    #     "hypervolume"
+    # )
+    archive_temp._store._fields["objective"] = np.array([pf.numvisits for pf in archive_temp._store._fields.pop(
+        "pf"
+    )])
     ribs.visualize.cvt_archive_heatmap(archive_temp, *args[1:], **kwargs)
 
