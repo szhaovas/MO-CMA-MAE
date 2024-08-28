@@ -32,7 +32,7 @@ class EvolutionStrategyEmitter(ribs.emitters.EvolutionStrategyEmitter):
             occupied, data = self.archive.retrieve(measures)
             if np.any(occupied):
                 avg_numvisits = self.archive.total_numvisits / len(self.archive)
-                return (np.max(data["numvisits"]) / avg_numvisits) > 100
+                return (np.max(data["numvisits"]) / avg_numvisits) > 10
             return False
         raise ValueError(f"Invalid restart_rule {self._restart_rule}")
 

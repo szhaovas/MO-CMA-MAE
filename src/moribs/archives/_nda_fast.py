@@ -20,6 +20,8 @@ import warnings as _warnings
 # from collections import deque  # does not support deletion of slices!?
 import bisect as _bisect  # to find the insertion index efficiently
 
+from ribs.archives._add_status import AddStatus
+
 try:
     import fractions
 except ImportError:
@@ -230,19 +232,32 @@ class BiobjectiveNondominatedSortedList(list):
                 "argument `f_pair` must be of length 2, was" " ``%s``" % str(f_pair)
             )
 
-        # Only called from hypervolume_improvement. Don't negate, don't downscale
-        if (solution is None) or (measure is None):
+        # Called from inside for hypervolume_improvement checks, do not negate, downscale, or increase numvisits
+        if (solution is None) or (measure is None) or not (addback_discount_factor is None):
             f_objs = np.array(f_pair, dtype=np.float64)
             discount_factor = 1
-            info = None
-        # Called from outside, negate and downscale
+
+            # Called from addback add_list()
+            #   This solution was temporarily removed when checking hypervolume. Add it back exact as it was.
+            if not (solution is None) and not (measure is None) and not (addback_discount_factor is None):
+                info = {
+                    "solution": solution, 
+                    "measure": measure, 
+                    "discount_factor": addback_discount_factor
+                }
+            # Called from hypervolume_improvement()
+            #   This solution is only added to estimate its hypervolume contribution and will be removed afterwards.
+            #   It does not have any associated info.
+            elif (solution is None) and (measure is None) and (addback_discount_factor is None):
+                info = None
+            else:
+                raise
+
         else:
             f_objs = -np.array(f_pair, dtype=np.float64)
             cur_objs = np.array(self)
         
-            if not (addback_discount_factor is None):
-                discount_factor = 1
-            elif len(self) == 0:
+            if len(self) == 0:
                 discount_factor = self._init_discount
             else:
                 cosims = (f_objs @ cur_objs.T) / (np.linalg.norm(f_objs)*np.linalg.norm(cur_objs, axis=1))
@@ -252,8 +267,10 @@ class BiobjectiveNondominatedSortedList(list):
             info = {
                 "solution": solution, 
                 "measure": measure, 
-                "discount_factor": ((1 - self._alpha) * discount_factor + self._alpha) if addback_discount_factor is None else addback_discount_factor
+                "discount_factor": ((1 - self._alpha) * discount_factor + self._alpha)
             }
+
+            self.numvisits += 1
 
         assert np.all(f_objs <= 0)
         f_objs *= discount_factor
@@ -284,7 +301,7 @@ class BiobjectiveNondominatedSortedList(list):
         `self` and that `idx` is the correct insertion place e.g.
         acquired by `bisect_left`.
         """
-        if self._infos is None and info is not None:  # prepare for inserting info
+        if self._infos is None:  # prepare for inserting info
             self._infos = len(self) * [
                 None
             ]  # `_infos` and `self` are in a consistent state now
@@ -317,7 +334,6 @@ class BiobjectiveNondominatedSortedList(list):
         assert self._infos is None or len(self) == len(self.infos) == len(
             self._infos
         ), (self._infos, len(self._infos), len(self.infos))
-        self.numvisits += 1
         # assert len(self) == len(self.infos), (self._infos, self.infos, len(self.infos), len(self))
         # caveat: len(self.infos) creates a list if self._infos is None
         # self.make_expensive_asserts and self._asserts()
@@ -388,7 +404,7 @@ class BiobjectiveNondominatedSortedList(list):
         removed = []
         # should we better create a non-dominated list and do a merge?
         for solution, f_pair, measure, discount in zip(list_of_solutions, list_of_f_pairs, list_of_measures, list_of_discounts):
-            if self.add(solution=solution, f_pair=[-f_pair[0],-f_pair[1]], measure=measure, addback_discount_factor=discount) is not None:
+            if self.add(solution=solution, f_pair=f_pair, measure=measure, addback_discount_factor=discount) is not None:
                 removed += [self._removed]  # slightly faster than .extend
         self._removed = removed  # could contain elements of `list_of_f_pairs`
         self.make_expensive_asserts and self._asserts()
@@ -743,7 +759,7 @@ class BiobjectiveNondominatedSortedList(list):
             else 0
         )
 
-    def hypervolume_improvement(self, f_pair):
+    def hypervolume_improvement(self, f_pair, uhvi=False):
         """return how much `f_pair` would improve the hypervolume.
 
         If dominated, return the distance to the empirical pareto front
@@ -759,7 +775,10 @@ class BiobjectiveNondominatedSortedList(list):
         f_objs = list(f_objs)
         dist = self.distance_to_pareto_front(f_objs)
         if dist:
-            return -dist, 0
+            if uhvi:
+                return -dist, AddStatus.NOT_ADDED
+            else:
+                return 0, AddStatus.NOT_ADDED
         state = self._state()
         removed = self.discarded  # to get back previous state
         added = self.add(solution=None, f_pair=f_objs, measure=None) is not None
@@ -782,14 +801,10 @@ class BiobjectiveNondominatedSortedList(list):
         if self.hypervolume_computation_float_type is not float and (
             self.hypervolume_final_float_type is not float
         ):
-            if state != self._state():
-                __import__("pdb").set_trace()
             assert state == self._state()
 
         hvi = self.hypervolume_computation_float_type(hv1) - self.hypervolume
-        if np.any([self.infos[i] is None for i in range(len(self))]):
-            __import__("pdb").set_trace()
-        return (hvi, 2) if len(self) == 0 else (hvi, 1)
+        return (hvi, AddStatus.NEW) if len(self) == 0 else (hvi, AddStatus.IMPROVE_EXISTING)
 
     def _set_HV(self):
         """set current hypervolume value using `self.reference_point`.

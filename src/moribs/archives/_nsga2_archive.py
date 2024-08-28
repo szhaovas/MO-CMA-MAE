@@ -16,6 +16,7 @@ from ._pf_utils import (
     batch_entry_pf,
     compute_moqd_score,
     compute_best_index,
+    compute_total_numvisits,
 )
 
 
@@ -251,7 +252,7 @@ class NSGA2Archive(PFCVTArchive):
         reference_point,
         cells,
         ranges,
-        max_pf_size=None,
+        pop_size,
         seed=None,
         samples=100_000,
     ):
@@ -263,16 +264,16 @@ class NSGA2Archive(PFCVTArchive):
             reference_point=reference_point,
             cells=cells,
             ranges=ranges,
+            bias_sampling=False,
             init_discount=1,
             alpha=1,
-            bias_sampling=False,
-            max_pf_size=max_pf_size,
+            max_pf_size=None,
             hvi_cutoff_threshold=None,
             seed=seed,
             samples=samples,
         )
 
-        self._pop_size = cells * max_pf_size
+        self._pop_size = pop_size
 
         self.nsga2 = NSGA2Repertoire.init(
             # Workaround for NSGA2Repertoire needing an init_population.
@@ -320,15 +321,17 @@ class NSGA2Archive(PFCVTArchive):
                 # The ArchiveBase class maintains "_objective_sum" when calculating
                 # sum, so we use self._objective_sum here to stay compatible.
                 "hypervolume_sum": self._objective_sum,
+                "total_numvisits": self.total_numvisits
             },
-            [batch_entry_pf, compute_moqd_score, compute_best_index],
+            [batch_entry_pf, compute_moqd_score, compute_best_index, compute_total_numvisits],
         )
 
         # Updates passive archive QD metrics.
         hypervolume_sum = add_info.pop("hypervolume_sum")
         best_index = add_info.pop("best_index")
+        total_numvisits = add_info.pop("total_numvisits")
         if not np.all(add_info["status"] == 0):
-            self._stats_update(hypervolume_sum, best_index)
+            self._stats_update(hypervolume_sum, best_index, total_numvisits)
 
     def add_single(self, solution, objective, measures, **fields):
         raise NotImplementedError("Please use batch add() for NSGA2.")

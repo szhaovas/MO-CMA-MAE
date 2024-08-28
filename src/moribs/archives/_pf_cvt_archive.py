@@ -18,8 +18,7 @@ from ._pf_utils import (
     batch_entry_pf,
     compute_moqd_score,
     compute_best_index,
-    compute_total_numvisits,
-    compute_max_numvisits,
+    compute_total_numvisits
 )
 
 
@@ -102,6 +101,13 @@ class PFCVTArchive(CVTArchive):
                 init_discount=init_discount, alpha=alpha, maxlen=max_pf_size, reference_point=reference_point, seed=seed
             )
         
+        self._pf_reset_params = {
+            "init_discount": init_discount,
+            "alpha": alpha,
+            "maxlen": max_pf_size,
+            "reference_point": reference_point,
+            "seed": seed
+        }
         self._total_numvisits = 0
 
     @property
@@ -228,7 +234,7 @@ class PFCVTArchive(CVTArchive):
                 "hypervolume_sum": self._objective_sum,
                 "total_numvisits": self.total_numvisits
             },
-            [batch_entry_pf, compute_moqd_score, compute_best_index, compute_total_numvisits, compute_max_numvisits],
+            [batch_entry_pf, compute_moqd_score, compute_best_index, compute_total_numvisits],
         )
 
         hypervolume_sum = add_info.pop("hypervolume_sum")
@@ -318,3 +324,16 @@ class PFCVTArchive(CVTArchive):
             obj_max=new_obj_max,
             obj_mean=self._objective_sum / self.dtype(len(self)),
         )
+
+    def clear(self):
+        self._store = ArrayStore(
+            field_desc={"pf": ((), object), "hypervolume": ((), np.float64), "numvisits": ((), np.int64)},
+            capacity=self._cells,
+        )
+        for i in range(self._cells):
+            self._store._fields["pf"][i] = BiobjectiveNondominatedSortedList(**self._pf_reset_params)
+        self._stats_reset()
+
+    def _stats_reset(self):
+        self._total_numvisits = 0
+        return super()._stats_reset()

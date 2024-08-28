@@ -5,7 +5,7 @@ archive:
   reference_point: [0, 0]
   cells: 1000
   # ranges: will be filled at runtime, see src/main.py
-  max_pf_size: 10
+  pop_size: 10000
   # seed: will be filled at runtime, see src/main.py
   samples: 50000
 

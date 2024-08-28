@@ -15,7 +15,7 @@ from ._pf_utils import (
 from ._nda_fast import BiobjectiveNondominatedSortedList
 
 
-class MOCMAMEArchive(PFCVTArchive):
+class MOCMAMAEArchive(PFCVTArchive):
     """Adapts COMO-CMA-ES to MOQD by pairing a Pareto Front which returns UHVI
     indicator value on add() with a PFCVTArchive as passive QD archive.
 

@@ -1,4 +1,5 @@
 import numpy as np
+import logging
 from ribs._utils import (
     check_batch_shape,
     check_solution_batch_dim,
@@ -10,9 +11,13 @@ from ._pf_utils import (
     batch_entry_pf,
     compute_moqd_score,
     compute_best_index,
+    compute_total_numvisits
 )
 # from ._nondominatedarchive import NonDominatedList
 from ._nda_fast import BiobjectiveNondominatedSortedList
+
+
+logger = logging.getLogger(__name__)
 
 
 class COMOCMAESArchive(PFCVTArchive):
@@ -38,10 +43,7 @@ class COMOCMAESArchive(PFCVTArchive):
         reference_point,
         cells,
         ranges,
-        # qd_update_freq,
-        pop_size=None,
-        max_pf_size=None,
-        hvi_cutoff_threshold=None,
+        pop_size,
         seed=None,
         samples=100_000,
     ):
@@ -56,30 +58,19 @@ class COMOCMAESArchive(PFCVTArchive):
             bias_sampling=False,
             init_discount=1,
             alpha=1,
-            max_pf_size=max_pf_size,
-            hvi_cutoff_threshold=hvi_cutoff_threshold,
+            max_pf_size=None,
+            hvi_cutoff_threshold=None,
             seed=seed,
             samples=samples,
         )
 
-        # self._num_adds = 0
-        # self._qd_update_freq = qd_update_freq
-
-        if pop_size is None and max_pf_size is None:
-            raise ValueError(
-                "max_pf_size must be provided to calculate pop_size if"
-                "pop_size is not provided."
-            )
-        elif pop_size is not None:
-            self._pop_size = pop_size
-        else:
-            self._pop_size = cells * max_pf_size
+        self._pop_size = pop_size
 
         # self.comocmaes = NonDominatedList(
         #     maxlen=self.pop_size, reference_point=self.reference_point, seed=seed
         # )
         self.comocmaes = BiobjectiveNondominatedSortedList(
-            maxlen=self.pop_size, reference_point=self.reference_point, seed=seed
+            init_discount=1, alpha=1, maxlen=self.pop_size, reference_point=self.reference_point, seed=seed
         )
 
     # @property
@@ -106,8 +97,7 @@ class COMOCMAESArchive(PFCVTArchive):
         self.clear()
         data = {
             "solution": np.array(self.comocmaes.solutions),
-            # Negated because NonDominatedList stores negated objectives
-            "objective": -np.array(self.comocmaes),
+            "objective": np.array(self.comocmaes.objectives),
             "measures": np.array(self.comocmaes.measures),
             **fields,
         }
@@ -120,15 +110,17 @@ class COMOCMAESArchive(PFCVTArchive):
                 # The ArchiveBase class maintains "_objective_sum" when calculating
                 # sum, so we use self._objective_sum here to stay compatible.
                 "hypervolume_sum": self._objective_sum,
+                "total_numvisits": self.total_numvisits
             },
-            [batch_entry_pf, compute_moqd_score, compute_best_index],
+            [batch_entry_pf, compute_moqd_score, compute_best_index, compute_total_numvisits],
         )
 
         # Updates passive archive QD metrics.
         hypervolume_sum = add_info.pop("hypervolume_sum")
         best_index = add_info.pop("best_index")
+        total_numvisits = add_info.pop("total_numvisits")
         if not np.all(add_info["status"] == 0):
-            self._stats_update(hypervolume_sum, best_index)
+            self._stats_update(hypervolume_sum, best_index, total_numvisits)
 
     def add_single(self, solution, objective, measures, **fields):
         raise NotImplementedError("Please use batch add() for COMO-CMA-ES.")
@@ -170,7 +162,7 @@ class COMOCMAESArchive(PFCVTArchive):
             "value": np.zeros(batch_size, dtype=np.float64),
         }
         for i, (sol, objs, meas) in enumerate(zip(solution, objective, measures)):
-            value, status = self.comocmaes.hypervolume_improvement(-objs)
+            value, status = self.comocmaes.hypervolume_improvement(objs, uhvi=True)
 
             # Since NonDominatedList doesn't have measures, there can no longer be AddStatus.NEW
             if status == AddStatus.NEW:
@@ -184,18 +176,23 @@ class COMOCMAESArchive(PFCVTArchive):
                 value, status = 0, AddStatus.NOT_ADDED
 
             add_info["value"][i], add_info["status"][i] = value, status
+        
+        can_insert = (add_info["status"] != AddStatus.NOT_ADDED)
 
+        logger.info(
+            f"Among {batch_size} generated solutions, {sum(can_insert)} are non-dominated."
+        )
+
+        actually_inserted = np.full(np.sum(can_insert), True)
         # Add batch solututions to the Pareto Front population.
-        # Need two for loops because adding solutions in the same for loop as addcheck biases
-        #   against solutions which are added later.
-        for i, (sol, objs, meas) in enumerate(zip(solution, objective, measures)):
-            if add_info["status"][i] != AddStatus.NOT_ADDED:
-                self.comocmaes.add(sol, -objs, meas, prune=False)
-        self.comocmaes.prune()
+        for i, (sol, objs, meas) in enumerate(zip(solution[can_insert], objective[can_insert], measures[can_insert])):
+            added_at = self.comocmaes.add(sol, objs, meas)
+            if added_at is None:
+                actually_inserted[i] = False
 
-        # # Only update the passive qd archive every self._qd_update_freq.
-        # if self.num_adds >= self._qd_update_freq:
-        #     self.qd_update(**fields)
+        logger.info(
+            f"{sum(actually_inserted)} are dominated by others within batch."
+        )
 
         return add_info
 
@@ -213,7 +210,3 @@ class COMOCMAESArchive(PFCVTArchive):
             raise IndexError("No elements in archive.")
 
         return {"solution": self._rng.choice(self.comocmaes.solutions, size=n)}
-
-    # def _stats_reset(self):
-    #     super()._stats_reset()
-    #     self._num_adds = 0

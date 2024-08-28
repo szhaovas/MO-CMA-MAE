@@ -191,7 +191,7 @@ def batch_entry_pf(indices, new_data, add_info, extra_args, occupied, cur_data):
         add_info["value"][i], add_info["status"][i] = value, status
 
     is_new = ~occupied
-    improve_existing = occupied & (add_info["status"] == 1)
+    improve_existing = occupied & (add_info["status"] == AddStatus.IMPROVE_EXISTING)
     can_insert = (is_new | improve_existing)
 
     logger.info(
@@ -288,26 +288,16 @@ def compute_total_numvisits(indices, new_data, add_info, extra_args, occupied, c
     return indices, new_data, add_info
 
 
-def compute_max_numvisits(indices, new_data, add_info, extra_args, occupied, cur_data):
-    # pylint: disable = unused-argument
-    if len(indices) == 0:
-        add_info["max_numvisits"] = None
-    else:
-        new_max_numvisits = np.max(new_data["numvisits"])
-        add_info["max_numvisits"] = new_max_numvisits
-    return indices, new_data, add_info
-
-
 def cvt_archive_heatmap(*args, **kwargs):
     """Same as in vanilla pyribs except uses archive["hypervolume"] for heatmap color
     instead of archive["objective"].
     """
     archive_temp = copy.deepcopy(args[0])
-    # archive_temp._store._fields["objective"] = archive_temp._store._fields.pop(
-    #     "hypervolume"
-    # )
-    archive_temp._store._fields["objective"] = np.array([pf.numvisits for pf in archive_temp._store._fields.pop(
-        "pf"
-    )])
+    archive_temp._store._fields["objective"] = archive_temp._store._fields.pop(
+        "hypervolume"
+    )
+    # archive_temp._store._fields["objective"] = np.array([pf.numvisits for pf in archive_temp._store._fields.pop(
+    #     "pf"
+    # )])
     ribs.visualize.cvt_archive_heatmap(archive_temp, *args[1:], **kwargs)
 

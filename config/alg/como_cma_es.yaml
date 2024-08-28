@@ -5,9 +5,7 @@ archive:
   reference_point: [0, 0]
   cells: 1000
   # ranges: will be filled at runtime, see src/main.py
-  pop_size: null
-  max_pf_size: 10
-  hvi_cutoff_threshold: null
+  pop_size: 10000
   # seed: will be filled at runtime, see src/main.py
   samples: 50000
 
@@ -16,7 +14,7 @@ _emitter_dict:
   # All emitter types specified in defaults list should have a key named <ID> here
   # (program will throw an error otherwise when instantiating emitters)
   e1: # This should match the <ID> in the defaults list
-    num: 1 # Number of emitters of the type specified by <ID> in the defaults list
+    num: 5 # Number of emitters of the type specified by <ID> in the defaults list
     # x0: will be filled at runtime, see src/main.py
     sigma0: 0.5
     ranker: "imp"
