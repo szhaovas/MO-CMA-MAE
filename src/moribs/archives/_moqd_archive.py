@@ -2,7 +2,7 @@ import numpy as np
 from src.moribs.archives import PFCVTArchive
 
 
-class MOCMAMAEArchive(PFCVTArchive):
+class MOQDArchive(PFCVTArchive):
     def __init__(
         self,
         *,

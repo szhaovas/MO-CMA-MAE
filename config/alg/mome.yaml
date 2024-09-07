@@ -1,5 +1,5 @@
 archive:
-  _target_: src.moribs.archives.PFCVTArchive
+  _target_: src.moribs.archives.MOQDArchive
   # solution_dim: will be filled at runtime, see src/main.py
   objective_dim: 2
   reference_point: [0, 0]

@@ -13,7 +13,6 @@ from ._pf_utils import (
     compute_best_index,
     compute_total_numvisits
 )
-# from ._nondominatedarchive import NonDominatedList
 from ._nda_fast import BiobjectiveNondominatedSortedList
 
 
@@ -66,39 +65,19 @@ class COMOCMAESArchive(PFCVTArchive):
 
         self._pop_size = pop_size
 
-        # self.comocmaes = NonDominatedList(
-        #     maxlen=self.pop_size, reference_point=self.reference_point, seed=seed
-        # )
-        self.comocmaes = BiobjectiveNondominatedSortedList(
+        self.main = BiobjectiveNondominatedSortedList(
             init_discount=1, alpha=1, maxlen=self.pop_size, reference_point=self.reference_point, seed=seed
         )
-
-    # @property
-    # def num_adds(self):
-    #     """Number of times add() function has been called on this archive
-    #     should equal ``itr * batch_size``
-    #     """
-    #     return self._num_adds
 
     @property
     def pop_size(self):
         return self._pop_size
 
     def qd_update(self, **fields):
-        """Re-add solutions, objectives, and measures stored in the COMO-CMA-ES population to the
-        passive archive.
-        The passive archive is updated by first emptying and then re-adding NSGA2Population.population.
-
-        FIXME: Maybe more efficient to identify changed individuals and modify those only?
-
-        Returns:
-            Doesn't return add_info since COMO-CMA-ES uses UHVI values calculated w.r.t. the entire PF.
-        """
-        self.clear()
         data = {
-            "solution": np.array(self.comocmaes.solutions),
-            "objective": np.array(self.comocmaes.objectives),
-            "measures": np.array(self.comocmaes.measures),
+            "solution": np.array(self.main.solutions),
+            "objective": np.array(self.main.objectives),
+            "measures": np.array(self.main.measures),
             **fields,
         }
 
@@ -121,9 +100,6 @@ class COMOCMAESArchive(PFCVTArchive):
         total_numvisits = add_info.pop("total_numvisits")
         if not np.all(add_info["status"] == 0):
             self._stats_update(hypervolume_sum, best_index, total_numvisits)
-
-    def add_single(self, solution, objective, measures, **fields):
-        raise NotImplementedError("Please use batch add() for COMO-CMA-ES.")
 
     def add(self, solution, objective, measures, **fields):
         """Inserts the new solutions and objectives into the population represented by
@@ -162,7 +138,7 @@ class COMOCMAESArchive(PFCVTArchive):
             "value": np.zeros(batch_size, dtype=np.float64),
         }
         for i, (sol, objs, meas) in enumerate(zip(solution, objective, measures)):
-            value, status = self.comocmaes.hypervolume_improvement(objs, uhvi=True)
+            value, status = self.main.hypervolume_improvement(objs, uhvi=True)
 
             # Since NonDominatedList doesn't have measures, there can no longer be AddStatus.NEW
             if status == AddStatus.NEW:
@@ -186,12 +162,12 @@ class COMOCMAESArchive(PFCVTArchive):
         actually_inserted = np.full(np.sum(can_insert), True)
         # Add batch solututions to the Pareto Front population.
         for i, (sol, objs, meas) in enumerate(zip(solution[can_insert], objective[can_insert], measures[can_insert])):
-            added_at = self.comocmaes.add(sol, objs, meas)
+            added_at = self.main.add(sol, objs, meas)
             if added_at is None:
                 actually_inserted[i] = False
 
         logger.info(
-            f"{sum(actually_inserted)} are dominated by others within batch."
+            f"{sum(actually_inserted)} solutions are actually inserted."
         )
 
         return add_info
@@ -200,7 +176,7 @@ class COMOCMAESArchive(PFCVTArchive):
     def empty(self):
         """Since passive archive is not always in sync with the main pop,
         checks whether the main PF is empty."""
-        return len(self.comocmaes) == 0
+        return len(self.main) == 0
 
     def sample_elites(self, n):
         """Since passive archive is not always in sync with the main pop,
@@ -209,4 +185,4 @@ class COMOCMAESArchive(PFCVTArchive):
         if self.empty:
             raise IndexError("No elements in archive.")
 
-        return {"solution": self._rng.choice(self.comocmaes.solutions, size=n)}
+        return {"solution": self._rng.choice(self.main.solutions, size=n)}

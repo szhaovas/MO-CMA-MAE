@@ -275,7 +275,7 @@ class NSGA2Archive(PFCVTArchive):
 
         self._pop_size = pop_size
 
-        self.nsga2 = NSGA2Repertoire.init(
+        self.main = NSGA2Repertoire.init(
             # Workaround for NSGA2Repertoire needing an init_population.
             genotypes=jnp.zeros((1, solution_dim)),
             fitnesses=jnp.full((1, objective_dim), -jnp.inf),
@@ -290,20 +290,9 @@ class NSGA2Archive(PFCVTArchive):
         return self._pop_size
 
     def qd_update(self, **fields):
-        """Re-add solutions, objectives, and measures stored in the NSGA2 population to the
-        passive archive.
-        The passive archive is updated by first emptying and then re-adding NSGA2Population.population.
-
-        FIXME: Maybe more efficient to identify changed individuals and modify those only?
-
-        Returns:
-            Doesn't return add_info since NSGA2 doesn't need add_info to update its emitters.
-        """
-        self.clear()
-
-        sols = np.array(self.nsga2.genotypes, dtype=np.float64)
-        objs = np.array(self.nsga2.fitnesses, dtype=np.float64)
-        meas = np.array(self.nsga2.descriptors, dtype=np.float64)
+        sols = np.array(self.main.genotypes, dtype=np.float64)
+        objs = np.array(self.main.fitnesses, dtype=np.float64)
+        meas = np.array(self.main.descriptors, dtype=np.float64)
         filled_indices = np.where(np.all(objs != -np.inf, axis=-1))
 
         data = {
@@ -379,7 +368,7 @@ class NSGA2Archive(PFCVTArchive):
         check_finite(measures, "measures")
 
         # Update the NSGA2 population to obtain individuals that should go into the passive archive.
-        self.nsga2 = self.nsga2.add(
+        self.main = self.main.add(
             batch_of_genotypes=jnp.array(solution),
             batch_of_fitnesses=jnp.array(objective),
             batch_of_descriptors=jnp.array(measures),
@@ -395,7 +384,7 @@ class NSGA2Archive(PFCVTArchive):
     def empty(self):
         """Since passive archive is not always in sync with the main pop,
         checks whether the main PF is empty."""
-        return jnp.all(self.nsga2.fitnesses == -jnp.inf)
+        return jnp.all(self.main.fitnesses == -jnp.inf)
 
     def sample_elites(self, n):
         """Since passive archive is not always in sync with the main pop,
@@ -404,6 +393,6 @@ class NSGA2Archive(PFCVTArchive):
         if self.empty:
             raise IndexError("No elements in archive.")
 
-        samples, self.jax_rng_key = self.nsga2.sample(self.jax_rng_key, n)
+        samples, self.jax_rng_key = self.main.sample(self.jax_rng_key, n)
 
         return {"solution": samples}
