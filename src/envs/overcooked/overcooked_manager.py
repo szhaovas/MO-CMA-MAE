@@ -6,7 +6,6 @@ import time
 from typing import Tuple, List
 
 import numpy as np
-import torch
 from dask.distributed import Client
 
 from .gan import OvercookedGenerator
@@ -24,12 +23,9 @@ from omegaconf import read_write
 import hydra
 from hydra.core.utils import configure_log
 
+
 logger = logging.getLogger(__name__)
 
-MIN_SCORE = 0
-# max sparse reward = 3 * 20
-# max reward = (60 + 1) * 100
-MAX_SCORE = int(61e6)
 
 mlp_params = {
     "start_orientations": False,
@@ -132,7 +128,6 @@ class OvercookedManager:
             for lvl_id, (lvl, seed) in enumerate(zip(unrepaired_lvls, evaluation_seeds))
         ]
         results = self.client.gather(futures)
-        print(results)
 
         objs, meas = [], []
         for r in results:
@@ -233,7 +228,7 @@ def run(
             timestep = 0
 
             # Saves when each soup (order) was delivered
-            checkpoints = [env.horizon - 1] * env.num_orders
+            checkpoints = [0] * env.num_orders
             cur_order = 0
 
             if render:
@@ -269,19 +264,22 @@ def run(
             # mea1 = last_state.cal_concurrent_active_sum()
             # mea2 = last_state.cal_total_stuck_time()
 
-            # Smooth fitness is the total reward tie-broken by soup delivery
-            # times.
-            # Later soup deliveries are higher priority.
-            fitness = total_sparse_reward + 1
-            for timestep in reversed(checkpoints):
-                fitness *= env.horizon
-                fitness -= timestep
+            time_penalty = 0
+            prev_deliver_time = 0
+            for deliver_time in checkpoints:
+                # If no soup is delivered, there is no time penalty (but also no sparse reward)
+                between_deliver_time = max(deliver_time - prev_deliver_time, 0)
+                # Scale time penalty to half of delivery reward
+                time_penalty += (between_deliver_time / env.horizon) * (mdp.delivery_reward / 2)
+                prev_deliver_time = deliver_time
+            fitness = total_sparse_reward - time_penalty
+            max_fitness = mdp.num_items_for_soup * mdp.delivery_reward
 
-            fitnesses.append(fitness / MAX_SCORE)
+            fitnesses.append(fitness / max_fitness)
             mea1s.append(mea1)
             mea2s.append(mea2)
             logger.info(
-                f"Finished {i}th eval; Fitness: {fitness}; Measures: {[mea1, mea2]}"
+                f"Finished {i}th eval; Fitness: {fitness} ({total_sparse_reward / mdp.delivery_reward} delivered in {timestep} steps); Measures: {[mea1, mea2]}"
             )
 
             env = OvercookedEnv.from_mdp(mdp, info_level=0, horizon=100)
@@ -300,15 +298,30 @@ def run(
                 f"Seed: {seed}"
             )
 
+        prop_wall = np.sum(repaired_lvl == 2) / repaired_lvl.size
         logger.info(
-            f"Proportion of wall cells: {np.sum(repaired_lvl == 2) / repaired_lvl.size}"
+            f"Proportion of wall cells: {prop_wall}"
         )
-        obj2 = (1 - np.sum(repaired_lvl == 2) / repaired_lvl.size) * 100
-        return (
-            np.array([obj1, obj2]),
-            np.mean(mea1s, axis=0),
-            np.mean(mea2s, axis=0),
-        )
+        obj2 = (1 - prop_wall) * 100
+
+        if np.all(np.var(mea1s) <= 0.5) and np.all(np.var(mea2s) <= 0.5):
+            agg_objs = np.array([obj1, obj2])
+            mea1_agg = np.mean(mea1s)
+            mea2_agg = np.mean(mea2s)
+
+            logger.info(
+                f"Agg result: objs:{agg_objs}, mea1:{mea1_agg}, mea2:{mea2_agg}"
+            )
+            
+            return agg_objs, mea1_agg, mea2_agg
+        else:
+            logger.warning(
+                f"Map evaluation failed due to high variance\n"
+                f"\t measure 1: {mea1s}\n"
+                f"\t measure 2: {mea2s}\n"
+            )
+            return np.full((2,), np.nan), np.nan, np.nan
+        
     except (TimeoutError, NotConnectedError) as e:
         logger.warning(f"evaluate failed")
         logger.info(f"The repaired level was {repaired_lvl}")

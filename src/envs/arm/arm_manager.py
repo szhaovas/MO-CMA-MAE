@@ -45,4 +45,6 @@ class ArmManager:
             axis=1,
         )
 
+        objs = np.where((objs > 100) | (objs < 0), np.nan, objs)
+
         return objs, measures

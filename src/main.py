@@ -58,20 +58,6 @@ def save_heatmap(archive, heatmap_path):
     plt.close(plt.gcf())
 
 
-def save_pfs(archive, heatmap_path):
-    _, data = archive.retrieve_single([0, 0])
-    pf = data["pf"]
-    _, t_data = archive.main.retrieve_single([0, 0])
-    t_pf = t_data['pf']
-    
-    plt.figure(figsize=(8, 6))
-    objs = np.array(sorted(pf.objectives, key=lambda objs: objs[0]))
-    t_objs = np.array(sorted(t_pf.objectives, key=lambda objs: objs[0]))
-    plt.step(objs[:, 0], objs[:, 1], "b-", where="pre")
-    plt.step(t_objs[:, 0], t_objs[:, 1], "b-", alpha=0.2, where="pre")
-    plt.savefig(heatmap_path)
-
-
 def exp_func(
     cfg: DictConfig,
     runtime_env: str,
@@ -185,72 +171,53 @@ def exp_func(
     # Runs QD optimization for cfg["itrs"] iterations while saving heatmaps every
     #   cfg["draw_arch_freq"] iterations, and pickling the final archive.
     for itr in range(starting_itr, cfg["itrs"] + 1):
-        logger.info(
-            f"----------------------- Starting itr{itr} -----------------------"
-        )
-
-        sols = scheduler.ask()
-        if runtime_env in ["overcooked"]:
-            objs, measures = env_manager.evaluate(sols, trial_outdir=trial_outdir)
-        else:
-            objs, measures = env_manager.evaluate(sols)
-        success_mask = np.all(~np.isnan(objs), axis=1)
-        
-        try:
-            scheduler.tell(objs, measures, success_mask)
-        except ValueError as e:
-            logger.error(e)
-
-        has_passive = runtime_alg in ["nsga2", "como_cma_es", "mo_cma_mae"]
-        log_arch_itr = itr > 0 and itr % cfg["log_arch_freq"] == 0
-        final_itr = itr == cfg["itrs"]
-        # Save heatmap and log QD metrics every cfg["draw_arch_freq"] iterations, and on final iteration.
-        if log_arch_itr or final_itr:
-            # For NSGA2 and COMO-CMA-ES, update the passive archive before accessing.
-            if has_passive:
-                scheduler.archive.qd_update()
-
-            save_heatmap(
-                scheduler.archive,
-                os.path.join(trial_outdir, f"heatmap_{itr:08d}.png"),
+            logger.info(
+                f"----------------------- Starting itr{itr} -----------------------"
             )
-            # save_pfs(
-            #     scheduler.archive,
-            #     os.path.join(trial_outdir, f"pfs_{itr:08d}.png"),
-            # )
 
-            with open(summary_filename, "a") as summary_file:
-                writer = csv.writer(summary_file)
-                data = [
-                    itr,
-                    scheduler.archive.stats.qd_score,
-                    scheduler.archive.stats.coverage,
-                    scheduler.archive.stats.obj_max,
-                    scheduler.archive.stats.obj_mean,
-                ]
-                writer.writerow(data)
-
-                logger.info(f"QD Metrics: {data}")
+            sols = scheduler.ask()
+            if runtime_env in ["overcooked"]:
+                objs, measures = env_manager.evaluate(sols, trial_outdir=trial_outdir)
+            else:
+                objs, measures = env_manager.evaluate(sols)
+            success_mask = np.all(~np.isnan(objs), axis=1)
             
-            # if np.isclose(scheduler.archive.stats.coverage, 0):
-            #     __import__("pdb").set_trace()
+            try:
+                scheduler.tell(objs, measures, success_mask)
+            except ValueError as e:
+                logger.error(e)
 
-            # pickle.dump(
-            #     scheduler.archive,
-            #     open(os.path.join(trial_outdir, f"archive_{itr:08d}.pkl"), "wb")
-            # )
+            passive_needs_update = runtime_alg in ["nsga2", "como_cma_es"]
+            log_arch_itr = itr > 0 and itr % cfg["log_arch_freq"] == 0
+            final_itr = itr == cfg["itrs"]
+            # Save heatmap and log QD metrics every cfg["draw_arch_freq"] iterations, and on final iteration.
+            if log_arch_itr or final_itr:
+                # For NSGA2 and COMO-CMA-ES, update the passive archive before accessing.
+                if passive_needs_update:
+                    scheduler.archive.qd_update()
 
-            # pickle.dump(
-            #     scheduler,
-            #     open(os.path.join(trial_outdir, f"scheduler_{itr:08d}.pkl"), "wb")
-            # )
+                save_heatmap(
+                    scheduler.archive,
+                    os.path.join(trial_outdir, f"heatmap_{itr:08d}.png"),
+                )
 
-            if np.isclose(scheduler.archive.stats.coverage, 0):
-                __import__("pdb").set_trace()
-	    
-            # np.savetxt(os.path.join(trial_outdir, f"sols_{itr:08d}.txt"), sols, delimiter=',')
-            # np.savetxt(os.path.join(trial_outdir, f"objs_{itr:08d}.txt"), objs, delimiter=',')
-            # np.savetxt(os.path.join(trial_outdir, f"meas_{itr:08d}.txt"), measures, delimiter=',')
+                with open(summary_filename, "a") as summary_file:
+                    writer = csv.writer(summary_file)
+                    data = [
+                        itr,
+                        scheduler.archive.stats.qd_score,
+                        scheduler.archive.stats.coverage,
+                        scheduler.archive.stats.obj_max,
+                        scheduler.archive.stats.obj_mean,
+                    ]
+                    writer.writerow(data)
+
+                    logger.info(f"QD Metrics: {data}")
+
+                pickle.dump(
+                    scheduler,
+                    open(os.path.join(trial_outdir, f"scheduler_{itr:08d}.pkl"), "wb")
+                )
 
 
 @hydra.main(version_base=None, config_path="../config", config_name="config")
@@ -304,10 +271,10 @@ def main(cfg: DictConfig):
     if runtime_env in ["sphere", "rastrigin", "arm"]:
         # Parallelize trials for simple envs
         trial_ids = list(range(cfg["num_trials"]))
-        # futures = client.map(configured_exp_func, trial_ids)
-        # results = client.gather(futures)
-        for trial_id in range(cfg["num_trials"]):
-            configured_exp_func(trial_id)
+        futures = client.map(configured_exp_func, trial_ids)
+        results = client.gather(futures)
+        # for trial_id in range(cfg["num_trials"]):
+        #     configured_exp_func(trial_id)
     elif runtime_env in ["overcooked"]:
         # Serialize trials and parallelize evaluations for overcooked
         for id in range(cfg["num_trials"]):
