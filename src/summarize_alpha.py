@@ -6,33 +6,24 @@ from os import path
 total_summary_filename = "total_summary.csv"
 skip_len = 1
 
-# name_mapping = {
-#     'me_moo_logs': 'MAP-Elites',
-#     'mome_logs': 'MOME',
-#     'nsga2_logs': 'NSGA-II',
-#     'spea2_logs': 'SPEA2',
-#     'old_tbd_logs': 'TBD',
-#     'tbd_logs': 'TBD(mu+mu)'
-# }
-
-# algo_order = [
-#     'TBD(mu+mu)',
-#     'TBD',
-#     'MOME',
-#     'MAP-Elites',
-#     'NSGA-II',
-#     'SPEA2'
-# ]
-
 name_mapping = {
-    "0.001": "alpha=0.001",
-    "0.01": "alpha=0.01",
-    "0.1": "alpha=0.1",
-    "1": "alpha=1",
-    "unlimited": "unlimited"
+    'mo_cma_mae': 'MO-CMA-MAE',
+    'mome': 'MOME',
+    'nsga2': 'NSGA-II',
+    'como_cma_es': 'COMO-CMA-ES',
 }
 
-algo_order = ["unlimited", "alpha=0.001", "alpha=0.01", "alpha=0.1", "alpha=1"]
+# name_mapping = {
+#     "alpha=0.001": "alpha=0.001",
+#     "alpha=0.01": "alpha=0.01",
+#     "alpha=0.1": "alpha=0.1",
+#     "alpha=1": "alpha=1",
+#     "dynamic_archive": "dynamic archive",
+#     "single_discount": "single discount"
+# }
+
+# algo_order = ["alpha=0.001", "alpha=0.01", "alpha=0.1", "alpha=1", "dynamic archive", "single discount"]
+algo_order = ["MO-CMA-MAE", "MOME", "NSGA-II", "COMO-CMA-ES"]
 
 
 def order_func(datum):
@@ -40,8 +31,10 @@ def order_func(datum):
 
 
 all_data = []
-for p in glob.glob("*/summary.csv"):
-    algo_name, _ = path.split(p)
+for p in glob.glob("*/*/trial*/summary.csv"):
+    head, _ = path.split(p)
+    head, _ = path.split(head)
+    algo_name, _ = path.split(head)
 
     if algo_name not in name_mapping:
         continue
