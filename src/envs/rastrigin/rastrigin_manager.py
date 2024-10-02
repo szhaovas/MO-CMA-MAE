@@ -47,8 +47,6 @@ class RastriginManager:
             * 100
         )
 
-        # Calculate BCs.
-        # FIXME: update clip to match MOME implementation?
         clipped = sols.copy()
         clip_indices = np.where(np.logical_or(clipped > 5.12, clipped < -5.12))
         clipped[clip_indices] = 5.12 / clipped[clip_indices]

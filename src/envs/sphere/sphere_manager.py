@@ -34,7 +34,6 @@ class SphereManager:
         raw_obj = np.sum(np.square(displacement), axis=0)
         objs = (raw_obj - self._worst_obj) / (self._best_obj - self._worst_obj) * 100
 
-        # FIXME: update clip to match MOME implementation?
         clipped = sols.copy()
         clip_indices = np.where(np.logical_or(clipped > 5.12, clipped < -5.12))
         clipped[clip_indices] = 5.12 / clipped[clip_indices]
@@ -46,5 +45,4 @@ class SphereManager:
             axis=1,
         )
 
-        # return objs, measures
         return objs, measures

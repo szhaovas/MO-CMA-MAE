@@ -131,6 +131,35 @@ def find_dominatee(akv_indices, objectives):
     return dominatees
 
 
+def binary_search_discount(obj, pf, alpha, epsilon):
+    assert 0 <= alpha <= 1
+
+    orig_hvi, status = pf.hypervolume_improvement(obj, uhvi=False)
+    
+    # No discount if already dominated or if alpha is 1 (passive archive)
+    if status == AddStatus.NOT_ADDED or alpha == 1:
+        return orig_hvi, status, 1
+    else:
+        target_hvi = orig_hvi * alpha
+        
+        def binary_rec(lo, hi):
+            assert 0 <= lo <= hi <= 1
+            
+            mid = (lo + hi) / 2
+            mid_hvi, mid_status = pf.hypervolume_improvement(mid * obj, uhvi=False)
+            
+            # Return if find hvi within epsilon of target
+            #   the discount must not cause obj to become dominated
+            if abs(target_hvi - mid_hvi) < epsilon and mid_status != AddStatus.NOT_ADDED:
+                return mid_hvi, mid_status, mid
+            elif mid_hvi < target_hvi:
+                return binary_rec(mid, hi)
+            else:
+                return binary_rec(lo, mid)
+
+        return binary_rec(0, 1)
+
+
 def batch_entry_pf(indices, new_data, add_info, extra_args, occupied, cur_data):
     """The MO-CMA-ME counterpart to batch_entries_with_threshold (see
     <https://github.com/icaros-usc/pyribs/blob/master/ribs/archives/_transforms.py#L125>).
@@ -160,8 +189,12 @@ def batch_entry_pf(indices, new_data, add_info, extra_args, occupied, cur_data):
     batch_size = len(indices)
 
     hvi_cutoff_threshold = extra_args["hvi_cutoff_threshold"]
+    alpha = extra_args["alpha"]
+    # No epsilon means infinite epsilon
+    epsilon = extra_args["epsilon"] or np.inf
     add_info["status"] = np.zeros(batch_size, dtype=np.int32)
     add_info["value"] = np.zeros(batch_size, dtype=np.float64)
+    add_info["discount"] = np.zeros(batch_size, dtype=np.float64)
 
     if np.any((new_data["objective"] > 100) | (new_data["objective"] < 0)):
         logger.error(
@@ -174,9 +207,12 @@ def batch_entry_pf(indices, new_data, add_info, extra_args, occupied, cur_data):
         # Cannot add to PF here because adding here modifies PF for later
         #   solutions and creates bias.
         if ocpd:
-            value, status = pf.hypervolume_improvement(obj)
+            # use bisect to search for a discount factor such that the HVI
+            #   is 1/alpha of the original HVI
+            value, status, discount = binary_search_discount(obj, pf, alpha, epsilon)
         else:
-            value, status = abs(np.prod(obj)), AddStatus.NEW
+            # FIXME: higher powers?
+            value, status, discount = abs(np.prod(obj))*alpha, AddStatus.NEW, np.sqrt(alpha)
 
         # If a solution has IMPROVE_EXISTING add status, and
         # its hypervolume improvement value < hvi_cutoff_threshold,
@@ -186,9 +222,9 @@ def batch_entry_pf(indices, new_data, add_info, extra_args, occupied, cur_data):
             and (status == AddStatus.IMPROVE_EXISTING)
             and (value < hvi_cutoff_threshold)
         ):
-            value, status = 0, AddStatus.NOT_ADDED
+            value, status, discount = 0, AddStatus.NOT_ADDED, 1
 
-        add_info["value"][i], add_info["status"][i] = value, status
+        add_info["value"][i], add_info["status"][i], add_info["discount"][i] = value, status, discount
 
     is_new = ~occupied
     improve_existing = occupied & (add_info["status"] == AddStatus.IMPROVE_EXISTING)
@@ -204,18 +240,19 @@ def batch_entry_pf(indices, new_data, add_info, extra_args, occupied, cur_data):
         return np.array([], dtype=np.int32), {}, add_info
 
     actually_inserted = np.full(np.sum(can_insert), True)
-    for i, (new_sol, new_obj, new_meas, pf) in enumerate(zip(
+    for i, (new_sol, new_obj, new_meas, pf, discount) in enumerate(zip(
         new_data["solution"][can_insert],
         new_data["objective"][can_insert],
         new_data["measures"][can_insert],
         cur_data["pf"][can_insert],
+        add_info["discount"][can_insert]
     )):
         # Negated because objectives are in [0,100] range and need to be maximized
         # while NonDominatedList minimizes objectives
         # The solutions are actually inserted here instead of at the end of
         # ArrayStore.add() as in vanilla pyribs.
         # __import__("pdb").set_trace()
-        added_at = pf.add(new_sol, new_obj, new_meas)
+        added_at = pf.add(new_sol, new_obj*discount, new_meas)
         if added_at is None:
             actually_inserted[i] = False
 
@@ -300,4 +337,18 @@ def cvt_archive_heatmap(*args, **kwargs):
     #     "pf"
     # )])
     ribs.visualize.cvt_archive_heatmap(archive_temp, *args[1:], **kwargs)
+
+
+def grid_archive_heatmap(*args, **kwargs):
+    """Same as in vanilla pyribs except uses archive["hypervolume"] for heatmap color
+    instead of archive["objective"].
+    """
+    archive_temp = copy.deepcopy(args[0])
+    archive_temp._store._fields["objective"] = archive_temp._store._fields.pop(
+        "hypervolume"
+    )
+    # archive_temp._store._fields["objective"] = np.array([pf.numvisits for pf in archive_temp._store._fields.pop(
+    #     "pf"
+    # )])
+    ribs.visualize.grid_archive_heatmap(archive_temp, *args[1:], **kwargs)
 

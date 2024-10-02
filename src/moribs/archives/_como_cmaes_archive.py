@@ -57,6 +57,8 @@ class COMOCMAESArchive(PFCVTArchive):
             bias_sampling=False,
             init_discount=1,
             alpha=1,
+            new_alpha=1,
+            epsilon=None,
             max_pf_size=None,
             hvi_cutoff_threshold=None,
             seed=seed,
@@ -89,7 +91,9 @@ class COMOCMAESArchive(PFCVTArchive):
                 # The ArchiveBase class maintains "_objective_sum" when calculating
                 # sum, so we use self._objective_sum here to stay compatible.
                 "hypervolume_sum": self._objective_sum,
-                "total_numvisits": self.total_numvisits
+                "total_numvisits": self.total_numvisits,
+                "alpha": 1,
+                "epsilon": None
             },
             [batch_entry_pf, compute_moqd_score, compute_best_index, compute_total_numvisits],
         )

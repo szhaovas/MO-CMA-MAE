@@ -14,6 +14,8 @@ class MOQDArchive(PFCVTArchive):
         bias_sampling,
         init_discount,
         alpha,
+        new_alpha,
+        epsilon,
         max_pf_size=None,
         hvi_cutoff_threshold=None,
         seed=None,
@@ -31,7 +33,9 @@ class MOQDArchive(PFCVTArchive):
             max_pf_size=None,
             init_discount=1,
             alpha=1,
-            hvi_cutoff_threshold=hvi_cutoff_threshold,
+            new_alpha=1,
+            epsilon=None,
+            hvi_cutoff_threshold=None,
             seed=seed,
             samples=samples,
         )
@@ -46,11 +50,65 @@ class MOQDArchive(PFCVTArchive):
             max_pf_size=max_pf_size,
             init_discount=init_discount,
             alpha=alpha,
+            new_alpha=new_alpha,
+            epsilon=epsilon,
             hvi_cutoff_threshold=hvi_cutoff_threshold,
             seed=seed,
             samples=samples,
             custom_centroids=np.copy(self.centroids)
         )
+
+# class MOQDArchive(PFGridArchive):
+#     def __init__(
+#         self,
+#         *,
+#         solution_dim,
+#         objective_dim,
+#         reference_point,
+#         dims,
+#         ranges,
+#         bias_sampling,
+#         init_discount,
+#         alpha,
+#         new_alpha,
+#         epsilon,
+#         max_pf_size=None,
+#         hvi_cutoff_threshold=None,
+#         seed=None
+#     ):
+
+#         PFGridArchive.__init__(
+#             self,
+#             solution_dim=solution_dim,
+#             objective_dim=objective_dim,
+#             reference_point=reference_point,
+#             dims=dims,
+#             ranges=ranges,
+#             bias_sampling=bias_sampling,
+#             max_pf_size=None,
+#             init_discount=1,
+#             alpha=1,
+#             new_alpha=1,
+#             epsilon=None,
+#             hvi_cutoff_threshold=None,
+#             seed=seed,
+#         )
+
+#         self.main = PFGridArchive(
+#             solution_dim=solution_dim,
+#             objective_dim=objective_dim,
+#             reference_point=reference_point,
+#             dims=dims,
+#             ranges=ranges,
+#             bias_sampling=bias_sampling,
+#             max_pf_size=max_pf_size,
+#             init_discount=init_discount,
+#             alpha=alpha,
+#             new_alpha=new_alpha,
+#             epsilon=epsilon,
+#             hvi_cutoff_threshold=hvi_cutoff_threshold,
+#             seed=seed
+#         )
 
     def add(self, solution, objective, measures, **fields):
         super().add(solution, objective, measures, **fields)

@@ -11,7 +11,6 @@ from ribs._utils import (
 from ribs.archives import CVTArchive, ArrayStore
 from ribs.archives._archive_stats import ArchiveStats
 
-# from ._nondominatedarchive import NonDominatedList
 from ._nda_fast import BiobjectiveNondominatedSortedList
 from ._pf_utils import (
     compute_crowding_distances,
@@ -58,6 +57,8 @@ class PFCVTArchive(CVTArchive):
         bias_sampling,
         init_discount,
         alpha,
+        new_alpha,
+        epsilon,
         max_pf_size=None,
         hvi_cutoff_threshold=None,
         seed=None,
@@ -100,6 +101,9 @@ class PFCVTArchive(CVTArchive):
             self._store._fields["pf"][i] = BiobjectiveNondominatedSortedList(
                 init_discount=init_discount, alpha=alpha, maxlen=max_pf_size, reference_point=reference_point, seed=seed
             )
+
+        self._alpha = new_alpha
+        self._epsilon = epsilon
         
         self._pf_reset_params = {
             "init_discount": init_discount,
@@ -125,6 +129,14 @@ class PFCVTArchive(CVTArchive):
     @property
     def hvi_cutoff_threshold(self):
         return self._hvi_cutoff_threshold
+    
+    @property
+    def alpha(self):
+        return self._alpha
+
+    @property
+    def epsilon(self):
+        return self._epsilon
 
     @property
     def bias_sampling(self):
@@ -232,7 +244,9 @@ class PFCVTArchive(CVTArchive):
                 # The ArchiveBase class maintains "_objective_sum" when calculating
                 # sum, so we use self._objective_sum here to stay compatible.
                 "hypervolume_sum": self._objective_sum,
-                "total_numvisits": self.total_numvisits
+                "total_numvisits": self.total_numvisits,
+                "alpha": self.alpha,
+                "epsilon": self.epsilon
             },
             [batch_entry_pf, compute_moqd_score, compute_best_index, compute_total_numvisits],
         )

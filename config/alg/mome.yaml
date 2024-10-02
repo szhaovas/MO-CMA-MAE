@@ -7,6 +7,8 @@ archive:
   # ranges: will be filled at runtime, see src/main.py
   init_discount: 1
   alpha: 1
+  new_alpha: 1
+  epsilon: null
   bias_sampling: true
   max_pf_size: 10
   hvi_cutoff_threshold: null
