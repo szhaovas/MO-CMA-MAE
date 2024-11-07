@@ -14,16 +14,13 @@ class RastriginManager:
         # grid search
         x_grid = np.linspace(-10.24, 10.24, int(1e6))
 
-        obj1_grid = np.square(x_grid - self.shift[0]) - self.A * np.cos(
-            2 * np.pi * (x_grid - self.shift[0])
-        )
-        obj2_grid = np.square(x_grid - self.shift[1]) - self.A * np.cos(
+        obj_grid = np.array([np.square(x_grid - s) - self.A * np.cos(
             2 * np.pi * (x_grid - self.shift[1])
-        )
+        ) for s in self.shift])
 
-        self._best_obj = np.array([0, 0])
+        self._best_obj = np.zeros(len(shift))
         self._worst_obj = (
-            np.max(np.vstack((obj1_grid, obj2_grid)), axis=1)
+            np.max(obj_grid, axis=1)
             * self.solution_dim
         )
 
@@ -34,7 +31,7 @@ class RastriginManager:
             )
 
         displacement = np.vstack(
-            ([sols - self.shift[0]], [sols - self.shift[1]])
+            ([[sols - s for s in self.shift]])
         ).T
         sum_terms = np.square(displacement) - self.A * np.cos(
             2 * np.pi * displacement

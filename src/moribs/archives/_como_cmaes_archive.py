@@ -13,6 +13,7 @@ from ._pf_utils import (
     compute_best_index,
     compute_total_numvisits
 )
+from ._nondominatedarchive import NonDominatedList
 from ._nda_fast import BiobjectiveNondominatedSortedList
 
 
@@ -67,9 +68,16 @@ class COMOCMAESArchive(PFCVTArchive):
 
         self._pop_size = pop_size
 
-        self.main = BiobjectiveNondominatedSortedList(
-            init_discount=1, alpha=1, maxlen=self.pop_size, reference_point=self.reference_point, seed=seed
-        )
+        if objective_dim == 2:
+            self.main = BiobjectiveNondominatedSortedList(
+                init_discount=1, alpha=1, maxlen=self.pop_size, reference_point=self.reference_point, seed=seed
+            )
+        elif objective_dim > 2:
+            self.main = NonDominatedList(
+                init_discount=1, alpha=1, maxlen=self.pop_size, reference_point=self.reference_point, seed=seed
+            )
+        else:
+            raise ValueError(f"Expects objective_dim to be at least 2. actually got {objective_dim}")
 
     @property
     def pop_size(self):

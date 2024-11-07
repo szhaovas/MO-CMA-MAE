@@ -481,7 +481,7 @@ class NonDominatedList(list):
             ]
         return min(squared_distances) ** 0.5
 
-    def hypervolume_improvement(self, f_tuple):
+    def hypervolume_improvement(self, f_tuple, uhvi=False):
         """return how much `f_tuple` would improve the hypervolume, and one of three
         status:
             - 0: f_tuple is dominated by the current PF
@@ -500,7 +500,9 @@ class NonDominatedList(list):
         assert contribution >= 0
         if contribution:
             return (contribution, AddStatus.NEW) if len(self) == 0 else (contribution, AddStatus.IMPROVE_EXISTING)
-        return 0, AddStatus.NOT_ADDED
+        
+        dist = -self.distance_to_pareto_front(f_objs) if uhvi else 0
+        return dist, AddStatus.NOT_ADDED
 
     # @staticmethod
     # def _random_archive(max_size=500, p_ref_point=0.5):

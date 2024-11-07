@@ -11,6 +11,7 @@ from ribs._utils import (
 from ribs.archives import CVTArchive, ArrayStore
 from ribs.archives._archive_stats import ArchiveStats
 
+from ._nondominatedarchive import NonDominatedList
 from ._nda_fast import BiobjectiveNondominatedSortedList
 from ._pf_utils import (
     compute_crowding_distances,
@@ -98,9 +99,16 @@ class PFCVTArchive(CVTArchive):
         self._bias_sampling = bias_sampling
         # Initialize all Pareto Fronts to be empty.
         for i in range(self._cells):
-            self._store._fields["pf"][i] = BiobjectiveNondominatedSortedList(
-                init_discount=init_discount, alpha=alpha, maxlen=max_pf_size, reference_point=reference_point, seed=seed
-            )
+            if objective_dim == 2:
+                self._store._fields["pf"][i] = BiobjectiveNondominatedSortedList(
+                    init_discount=init_discount, alpha=alpha, maxlen=max_pf_size, reference_point=reference_point, seed=seed
+                )
+            elif objective_dim > 2:
+                self._store._fields["pf"][i] = NonDominatedList(
+                    init_discount=init_discount, alpha=alpha, maxlen=max_pf_size, reference_point=reference_point, seed=seed
+                )
+            else:
+                raise ValueError(f"Expects objective_dim to be at least 2. actually got {objective_dim}")
 
         self._alpha = new_alpha
         self._epsilon = epsilon

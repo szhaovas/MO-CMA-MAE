@@ -9,18 +9,14 @@ class SphereManager:
 
         # Best and worst objs used to scale all evaluations to [0, 100]
         # FIXME: Higher objective dimensions?
-        self._best_obj = np.array([0, 0])
+        self._best_obj = np.zeros(len(shift))
         # Compute worst_obj with x in [-10.24, 10.24]
         self._worst_obj = np.array(
             [
                 max(
-                    (10.24 - self.shift[0]) ** 2 * self.solution_dim,
-                    (-10.24 - self.shift[0]) ** 2 * self.solution_dim,
-                ),
-                max(
-                    (10.24 - self.shift[1]) ** 2 * self.solution_dim,
-                    (-10.24 - self.shift[1]) ** 2 * self.solution_dim,
-                ),
+                    (10.24 - s) ** 2 * self.solution_dim,
+                    (-10.24 - s) ** 2 * self.solution_dim,
+                ) for s in self.shift
             ]
         )
 
@@ -30,7 +26,7 @@ class SphereManager:
                 f"Expects sols to have shape (,{self.solution_dim}), actually gets shape {sols.shape}"
             )
 
-        displacement = np.vstack(([sols - self.shift[0]], [sols - self.shift[1]])).T
+        displacement = np.vstack(([[sols - s for s in self.shift]])).T
         raw_obj = np.sum(np.square(displacement), axis=0)
         objs = (raw_obj - self._worst_obj) / (self._best_obj - self._worst_obj) * 100
 

@@ -2,7 +2,7 @@ archive:
   _target_: src.moribs.archives.COMOCMAESArchive
   # solution_dim: will be filled at runtime, see src/main.py
   objective_dim: 2
-  reference_point: [0, 0]
+  reference_point: ${eval:"[0] * ${.objective_dim}"}
   cells: 1000
   # ranges: will be filled at runtime, see src/main.py
   pop_size: 10000

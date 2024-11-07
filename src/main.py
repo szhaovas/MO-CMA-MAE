@@ -39,11 +39,14 @@ def define_resolvers():
     if not OmegaConf.has_resolver("listfill"):
         OmegaConf.register_new_resolver("listfill", lambda item, len: [item] * len)
 
+    if not OmegaConf.has_resolver("eval"):
+        OmegaConf.register_new_resolver("eval", eval)
+
     if not OmegaConf.has_resolver("hydra"):
         setup_globals()
 
 
-def save_heatmap(archive, heatmap_path):
+def save_heatmap(archive, heatmap_path, objective_dim):
     """Saves a heatmap of the archive to the given path.
 
     Args:
@@ -52,7 +55,7 @@ def save_heatmap(archive, heatmap_path):
     """
     plt.figure(figsize=(8, 6))
     # grid_archive_heatmap(archive, vmin=0, vmax=10000, cmap='viridis')
-    cvt_archive_heatmap(archive, lw=0.1, vmin=0, vmax=10000, cmap="viridis")
+    cvt_archive_heatmap(archive, lw=0.1, vmin=0, vmax=100**objective_dim, cmap="viridis")
     plt.tight_layout()
     plt.savefig(heatmap_path)
     plt.close(plt.gcf())
@@ -70,6 +73,8 @@ def exp_func(
     hydra_cfg: DictConfig,
     trial_id: int,
 ):
+    define_resolvers()
+
     # Configure logging to each trial
     trial_outdir = os.path.join(
         runtime_dir,
@@ -171,53 +176,52 @@ def exp_func(
     # Runs QD optimization for cfg["itrs"] iterations while saving heatmaps every
     #   cfg["draw_arch_freq"] iterations, and pickling the final archive.
     for itr in range(starting_itr, cfg["itrs"] + 1):
-            logger.info(
-                f"----------------------- Starting itr{itr} -----------------------"
+        logger.info(
+            f"----------------------- Starting itr{itr} -----------------------"
+        )
+
+        sols = scheduler.ask()
+        if runtime_env in ["overcooked"]:
+            objs, measures = env_manager.evaluate(sols, trial_outdir=trial_outdir)
+        else:
+            objs, measures = env_manager.evaluate(sols)
+        success_mask = np.all(~np.isnan(objs), axis=1)
+        
+        scheduler.tell(objs, measures, success_mask)
+
+        passive_needs_update = runtime_alg in ["nsga2", "como_cma_es"]
+        log_arch_itr = itr > 0 and itr % cfg["log_arch_freq"] == 0
+        final_itr = itr == cfg["itrs"]
+        # Save heatmap and log QD metrics every cfg["draw_arch_freq"] iterations, and on final iteration.
+        if log_arch_itr or final_itr:
+            # For NSGA2 and COMO-CMA-ES, update the passive archive before accessing.
+            if passive_needs_update:
+                scheduler.archive.qd_update()
+
+            save_heatmap(
+                scheduler.archive,
+                os.path.join(trial_outdir, f"heatmap_{itr:08d}.png"),
+                cfg["alg"]["archive"]["objective_dim"]
             )
 
-            sols = scheduler.ask()
-            if runtime_env in ["overcooked"]:
-                objs, measures = env_manager.evaluate(sols, trial_outdir=trial_outdir)
-            else:
-                objs, measures = env_manager.evaluate(sols)
-            success_mask = np.all(~np.isnan(objs), axis=1)
-            
-            try:
-                scheduler.tell(objs, measures, success_mask)
-            except ValueError as e:
-                logger.error(e)
+            with open(summary_filename, "a") as summary_file:
+                writer = csv.writer(summary_file)
+                data = [
+                    itr,
+                    scheduler.archive.stats.qd_score,
+                    scheduler.archive.stats.coverage,
+                    scheduler.archive.stats.obj_max,
+                    scheduler.archive.stats.obj_mean,
+                ]
+                writer.writerow(data)
 
-            passive_needs_update = runtime_alg in ["nsga2", "como_cma_es"]
-            log_arch_itr = itr > 0 and itr % cfg["log_arch_freq"] == 0
-            final_itr = itr == cfg["itrs"]
-            # Save heatmap and log QD metrics every cfg["draw_arch_freq"] iterations, and on final iteration.
-            if log_arch_itr or final_itr:
-                # For NSGA2 and COMO-CMA-ES, update the passive archive before accessing.
-                if passive_needs_update:
-                    scheduler.archive.qd_update()
+                logger.info(f"QD Metrics: {data}")
 
-                save_heatmap(
-                    scheduler.archive,
-                    os.path.join(trial_outdir, f"heatmap_{itr:08d}.png"),
-                )
-
-                with open(summary_filename, "a") as summary_file:
-                    writer = csv.writer(summary_file)
-                    data = [
-                        itr,
-                        scheduler.archive.stats.qd_score,
-                        scheduler.archive.stats.coverage,
-                        scheduler.archive.stats.obj_max,
-                        scheduler.archive.stats.obj_mean,
-                    ]
-                    writer.writerow(data)
-
-                    logger.info(f"QD Metrics: {data}")
-
-                pickle.dump(
-                    scheduler,
-                    open(os.path.join(trial_outdir, f"scheduler_{itr:08d}.pkl"), "wb")
-                )
+            # if final_itr:
+            pickle.dump(
+                scheduler,
+                open(os.path.join(trial_outdir, f"scheduler_{itr:08d}.pkl"), "wb")
+            )
 
 
 @hydra.main(version_base=None, config_path="../config", config_name="config")
