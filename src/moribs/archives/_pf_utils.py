@@ -142,7 +142,9 @@ def binary_search_discount(obj, pf, alpha, epsilon):
     else:
         target_hvi = orig_hvi * alpha
         
-        def binary_rec(lo, hi):
+        lo = 0
+        hi = 1
+        while True:
             assert 0 <= lo <= hi <= 1
             
             mid = (lo + hi) / 2
@@ -151,13 +153,14 @@ def binary_search_discount(obj, pf, alpha, epsilon):
             # Return if find hvi within epsilon of target
             #   the discount must not cause obj to become dominated
             if abs(target_hvi - mid_hvi) < epsilon and mid_status != AddStatus.NOT_ADDED:
-                return mid_hvi, mid_status, mid
+                # return lo instead of mid to guarantee underestimation
+                return mid_hvi, mid_status, lo
+            # discount too small, search up
             elif mid_hvi < target_hvi:
-                return binary_rec(mid, hi)
+                lo = mid
+            # discount too large, search down
             else:
-                return binary_rec(lo, mid)
-
-        return binary_rec(0, 1)
+                hi = mid
 
 
 def batch_entry_pf(indices, new_data, add_info, extra_args, occupied, cur_data):
@@ -211,8 +214,7 @@ def batch_entry_pf(indices, new_data, add_info, extra_args, occupied, cur_data):
             #   is 1/alpha of the original HVI
             value, status, discount = binary_search_discount(obj, pf, alpha, epsilon)
         else:
-            # FIXME: higher powers?
-            value, status, discount = abs(np.prod(obj))*alpha, AddStatus.NEW, np.sqrt(alpha)
+            value, status, discount = abs(np.prod(obj))*alpha, AddStatus.NEW, alpha**(1./obj.size)
 
         # If a solution has IMPROVE_EXISTING add status, and
         # its hypervolume improvement value < hvi_cutoff_threshold,
