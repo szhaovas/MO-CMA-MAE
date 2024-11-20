@@ -1,0 +1,32 @@
+archive:
+  _target_: src.moribs.archives.MOQDArchive
+  # solution_dim: will be filled at runtime, see src/main.py
+  objective_dim: 2
+  reference_point: ${eval:"[0] * ${.objective_dim}"}
+  cells: 1000
+  # ranges: will be filled at runtime, see src/main.py
+  init_discount: 1
+  alpha: 1
+  new_alpha: 0.1
+  epsilon: 1e-3
+  bias_sampling: true
+  max_pf_size: null
+  hvi_cutoff_threshold: null
+  # seed: will be filled at runtime, see src/main.py
+  samples: 50000
+
+emitters: ${oc.dict.values:._emitter_dict}
+_emitter_dict:
+  # All emitter types specified in defaults list should have a key named <ID> here
+  # (program will throw an error otherwise when instantiating emitters)
+  e1: # This should match the <ID> in the defaults list
+    num: 10 # Number of emitters of the type specified by <ID> in the defaults list
+    itrs: ${itrs}
+    # batch_size: will be filled at runtime, see src/main.py
+    # seed: will be filled at runtime, see src/main.py
+
+defaults:
+  # Specify types of emitters as emitters@_emitter_dict.<ID>.type: ...
+  # <ID> can be anything unique (e.g., e1, e2, etc.)
+  - emitters@_emitter_dict.e1.type: dataset_emitter
+  - _self_

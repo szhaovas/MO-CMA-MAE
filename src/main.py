@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 
 
 def define_resolvers():
-
     if not OmegaConf.has_resolver("plus"):
         OmegaConf.register_new_resolver("plus", lambda x, y: x + y)
 
@@ -55,7 +54,9 @@ def save_heatmap(archive, heatmap_path, objective_dim):
     """
     plt.figure(figsize=(8, 6))
     # grid_archive_heatmap(archive, vmin=0, vmax=10000, cmap='viridis')
-    cvt_archive_heatmap(archive, lw=0.1, vmin=0, vmax=100**objective_dim, cmap="viridis")
+    cvt_archive_heatmap(
+        archive, lw=0.1, vmin=0, vmax=100**objective_dim, cmap="viridis"
+    )
     plt.tight_layout()
     plt.savefig(heatmap_path)
     plt.close(plt.gcf())
@@ -120,10 +121,10 @@ def exp_func(
             extra_args["x0"] = np.zeros(solution_dim)
 
             bounds = {
-                'sphere': [(-10.24, 10.24)] * solution_dim,
-                'rastrigin': [(-10.24, 10.24)] * solution_dim,
-                'arm': [(-np.pi, np.pi)] * solution_dim,
-                'overcooked': None
+                "sphere": [(-10.24, 10.24)] * solution_dim,
+                "rastrigin": [(-10.24, 10.24)] * solution_dim,
+                "arm": [(-np.pi, np.pi)] * solution_dim,
+                "overcooked": None,
             }
 
             emitters.extend(
@@ -169,8 +170,10 @@ def exp_func(
         else:
             objs, measures = env_manager.evaluate(init_sols)
         success_mask = np.all(~np.isnan(objs), axis=1)
-        
-        scheduler.archive.add(init_sols[success_mask], objs[success_mask], measures[success_mask])
+
+        scheduler.archive.add(
+            init_sols[success_mask], objs[success_mask], measures[success_mask]
+        )
 
     # The experiment main loop
     # Runs QD optimization for cfg["itrs"] iterations while saving heatmaps every
@@ -186,7 +189,7 @@ def exp_func(
         else:
             objs, measures = env_manager.evaluate(sols)
         success_mask = np.all(~np.isnan(objs), axis=1)
-        
+
         scheduler.tell(objs, measures, success_mask)
 
         passive_needs_update = runtime_alg in ["nsga2", "como_cma_es"]
@@ -201,7 +204,7 @@ def exp_func(
             save_heatmap(
                 scheduler.archive,
                 os.path.join(trial_outdir, f"heatmap_{itr:08d}.png"),
-                cfg["alg"]["archive"]["objective_dim"]
+                cfg["alg"]["archive"]["objective_dim"],
             )
 
             with open(summary_filename, "a") as summary_file:
@@ -220,7 +223,7 @@ def exp_func(
             # if final_itr:
             pickle.dump(
                 scheduler,
-                open(os.path.join(trial_outdir, f"scheduler_{itr:08d}.pkl"), "wb")
+                open(os.path.join(trial_outdir, f"scheduler_{itr:08d}.pkl"), "wb"),
             )
 
 
@@ -257,7 +260,9 @@ def main(cfg: DictConfig):
     if cfg["starting_scheduler_path"] is None:
         pickled_scheduler = None
     else:
-        pickled_scheduler = pkl.load(open(file=cfg["starting_scheduler_path"], mode="rb"))
+        pickled_scheduler = pkl.load(
+            open(file=cfg["starting_scheduler_path"], mode="rb")
+        )
 
     hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
     configured_exp_func = partial(

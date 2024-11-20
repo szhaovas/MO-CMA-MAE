@@ -57,9 +57,12 @@ def show_arm_links(sol):
 
     plt.show()
 
-def show_interactive_archive(archive):
+
+def show_interactive_archive(archive, objective_dim=2):
     fig = plt.figure(figsize=(8, 6))
-    cvt_archive_heatmap(archive, lw=0.1, vmin=0, vmax=10000, cmap="viridis")
+    cvt_archive_heatmap(
+        archive, lw=0.1, vmin=0, vmax=100**objective_dim, cmap="viridis"
+    )
     plt.tight_layout()
 
     def onclick(event):
@@ -76,46 +79,51 @@ def show_interactive_archive(archive):
     fig.canvas.mpl_connect("button_press_event", onclick)
     plt.show()
 
-def show_interactive_pf(archive, x, y, plot_tpf=False):
+
+def show_interactive_pf(
+    archive, x, y, plot_tpf=False, datapoint_freq=1, show_discount=False
+):
     _, data = archive.retrieve_single([x, y])
     pf = data["pf"]
     fig = plt.figure(figsize=(8, 6))
     objs = np.array(sorted(pf.objectives, key=lambda objs: objs[0]))
     plt.step(objs[:, 0], objs[:, 1], "b-", where="pre")
     print(f"Passive archive numvisits: {pf.numvisits}")
-    print(f"Passive archive numdomvisits: {pf.numdomvisits}")
 
     if plot_tpf:
         _, t_data = archive.main.retrieve_single([x, y])
-        t_pf = t_data['pf']
+        t_pf = t_data["pf"]
         t_objs = np.array(sorted(t_pf.objectives, key=lambda objs: objs[0]))
         plt.step(t_objs[:, 0], t_objs[:, 1], "b-", alpha=0.2, where="pre")
+        plt.scatter(t_objs[::datapoint_freq, 0], t_objs[::datapoint_freq, 1], c="blue")
+        if show_discount:
+            for i, (x, y) in enumerate(zip(t_objs[:, 0], t_objs[:, 1])):
+                if i % datapoint_freq == 0:
+                    plt.text(x, y, f"$d_{{{i}}}={t_pf.discount_factors[i]}$")
         print(f"Main archive numvisits: {t_pf.numvisits}")
-        print(f"Main archive numdomvisits: {t_pf.numdomvisits}")
 
     def onclick(event):
         # retrieves the solution with the most similar objectives as the clicked position
         min_distance = np.inf
         idx2show = None
-        
+
         all_objs = pf.objectives
         all_meas = pf.measures
         all_sols = pf.solutions
         all_discounts = pf._discount_factors
-        
+
         if plot_tpf:
             all_objs += t_pf.objectives
             all_meas += t_pf.measures
             all_sols += t_pf.solutions
             all_discounts += t_pf._discount_factors
-        
+
         for i, objs in enumerate(all_objs):
             distance = (event.xdata - objs[0]) ** 2 + (event.ydata - objs[1]) ** 2
-            # __import__("pdb").set_trace()
             if distance < min_distance:
                 min_distance = distance
                 idx2show = i
-        
+
         print("Showing solution with")
         print(f"\t objective values {all_objs[idx2show]}")
         print(f"\t measures {all_meas[idx2show]}")
@@ -127,10 +135,11 @@ def show_interactive_pf(archive, x, y, plot_tpf=False):
     fig.canvas.mpl_connect("button_press_event", onclick)
     plt.show()
 
+
 if __name__ == "__main__":
     with open(
-        file='/home/shihanzh/Desktop/moqd_dev-main/outputs/arm/mo_cma_mae/2024-08-25_084408/trial_0/archive_00005000.pkl',
+        file="/home/shihanzh/Desktop/moqd_dev-main/multirun/2024-11-19/13-52-49/0/trial_0/scheduler_00001200.pkl",
         mode="rb",
     ) as f:
-        archive = pkl.load(f)
+        archive = pkl.load(f).archive
         show_interactive_archive(archive)

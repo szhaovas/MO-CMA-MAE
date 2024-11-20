@@ -150,11 +150,10 @@ def binary_search_discount(obj, pf, alpha, epsilon):
             mid = (lo + hi) / 2
             mid_hvi, mid_status = pf.hypervolume_improvement(mid * obj, uhvi=False)
             
-            # Return if find hvi within epsilon of target
+            # Return if find hvi within epsilon of target on the lower side
             #   the discount must not cause obj to become dominated
-            if abs(target_hvi - mid_hvi) < epsilon and mid_status != AddStatus.NOT_ADDED:
-                # return lo instead of mid to guarantee underestimation
-                return mid_hvi, mid_status, lo
+            if 0 < (target_hvi - mid_hvi) < epsilon and mid_status != AddStatus.NOT_ADDED:
+                return mid_hvi, mid_status, mid
             # discount too small, search up
             elif mid_hvi < target_hvi:
                 lo = mid
