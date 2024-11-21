@@ -73,14 +73,16 @@ class NonDominatedList(list):
         f_objs = -np.array(f_tuple, dtype=np.float64)
         assert np.all(f_objs <= 0)
         cur_objs = np.array(self)
-        
+
         if len(self) == 0:
             discount_factor = self._init_discount
         else:
-            cosims = (f_objs @ cur_objs.T) / (np.linalg.norm(f_objs)*np.linalg.norm(cur_objs, axis=1))
+            cosims = (f_objs @ cur_objs.T) / (
+                np.linalg.norm(f_objs) * np.linalg.norm(cur_objs, axis=1)
+            )
             discount_idx = np.argmax(cosims)
             discount_factor = self.discount_factors[discount_idx]
-        
+
         f_objs *= discount_factor
 
         self.numvisits += 1
@@ -113,7 +115,7 @@ class NonDominatedList(list):
         add list of f_tuples, not using the add method to avoid calling
         self.prune() several times.
 
-        discount factors are calculated at the start because hypervolume improvements 
+        discount factors are calculated at the start because hypervolume improvements
         were calculated w.r.t. the discount factors before the add.
         """
         f_objs = -np.array(list_of_f_tuples, dtype=np.float64)
@@ -121,20 +123,24 @@ class NonDominatedList(list):
         cur_objs = np.array(self)
 
         batch_size = f_objs.shape[0]
-        
+
         if len(self) == 0:
-            discount_factor = np.full((batch_size,1), self._init_discount)
+            discount_factor = np.full((batch_size, 1), self._init_discount)
         else:
-            cosims = (f_objs @ cur_objs.T) / np.outer(np.linalg.norm(f_objs, axis=1),np.linalg.norm(cur_objs, axis=1))
+            cosims = (f_objs @ cur_objs.T) / np.outer(
+                np.linalg.norm(f_objs, axis=1), np.linalg.norm(cur_objs, axis=1)
+            )
             discount_idx = np.argmax(cosims, axis=1)
-            discount_factor = np.array(self.discount_factors)[discount_idx].reshape((-1,1))
-        
+            discount_factor = np.array(self.discount_factors)[discount_idx].reshape(
+                (-1, 1)
+            )
+
         f_objs *= discount_factor
 
         added = np.full(batch_size, False)
-        for i, (sol, obj, meas, dis) in enumerate(zip(
-            list_of_solutions, f_objs, list_of_f_measures, discount_factor
-        )):
+        for i, (sol, obj, meas, dis) in enumerate(
+            zip(list_of_solutions, f_objs, list_of_f_measures, discount_factor)
+        ):
             self.numvisits += 1
             if not self.dominates(obj):
                 self.append(obj)
@@ -306,10 +312,7 @@ class NonDominatedList(list):
             pass
         except IndexError:
             raise  # return None
-        if any(
-            f_tuple[k] >= reference_point[k]
-            for k in range(len(reference_point))
-        ):
+        if any(f_tuple[k] >= reference_point[k] for k in range(len(reference_point))):
             return False
         return True
 
@@ -499,8 +502,12 @@ class NonDominatedList(list):
         contribution = self.contributing_hypervolume(f_objs)
         assert contribution >= 0
         if contribution:
-            return (contribution, AddStatus.NEW) if len(self) == 0 else (contribution, AddStatus.IMPROVE_EXISTING)
-        
+            return (
+                (contribution, AddStatus.NEW)
+                if len(self) == 0
+                else (contribution, AddStatus.IMPROVE_EXISTING)
+            )
+
         dist = -self.distance_to_pareto_front(f_objs) if uhvi else 0
         return dist, AddStatus.NOT_ADDED
 

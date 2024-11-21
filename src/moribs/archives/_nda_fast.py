@@ -804,7 +804,11 @@ class BiobjectiveNondominatedSortedList(list):
             assert state == self._state()
 
         hvi = self.hypervolume_computation_float_type(hv1) - self.hypervolume
-        return (hvi, AddStatus.NEW) if len(self) == 0 else (hvi, AddStatus.IMPROVE_EXISTING)
+        if hvi > 0:
+            return (hvi, AddStatus.NEW) if len(self) == 0 else (hvi, AddStatus.IMPROVE_EXISTING)
+        else:
+            # solution already on PF
+            return 0, AddStatus.NOT_ADDED
 
     def _set_HV(self):
         """set current hypervolume value using `self.reference_point`.

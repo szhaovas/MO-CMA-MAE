@@ -135,24 +135,35 @@ def binary_search_discount(obj, pf, alpha, epsilon):
     assert 0 <= alpha <= 1
 
     orig_hvi, status = pf.hypervolume_improvement(obj, uhvi=False)
-    
+
     # No discount if already dominated or if alpha is 1 (passive archive)
     if status == AddStatus.NOT_ADDED or alpha == 1:
         return orig_hvi, status, 1
     else:
         target_hvi = orig_hvi * alpha
-        
+
         lo = 0
         hi = 1
+        counter = 0
         while True:
             assert 0 <= lo <= hi <= 1
-            
+
+            counter += 1
+            if counter >= 100:
+                logger.warning(
+                    f"100 iterations on binary_search_discount, discarding..."
+                )
+                return 0, AddStatus.NOT_ADDED, 1
+
             mid = (lo + hi) / 2
             mid_hvi, mid_status = pf.hypervolume_improvement(mid * obj, uhvi=False)
-            
+
             # Return if find hvi within epsilon of target on the lower side
             #   the discount must not cause obj to become dominated
-            if 0 < (target_hvi - mid_hvi) < epsilon and mid_status != AddStatus.NOT_ADDED:
+            if (
+                0 < (target_hvi - mid_hvi) < epsilon
+                and mid_status != AddStatus.NOT_ADDED
+            ):
                 return mid_hvi, mid_status, mid
             # discount too small, search up
             elif mid_hvi < target_hvi:
@@ -205,7 +216,9 @@ def batch_entry_pf(indices, new_data, add_info, extra_args, occupied, cur_data):
             f"\t{new_data['objective']}".replace("\n", "\n\t")
         )
 
-    for i, (obj, pf, ocpd) in enumerate(zip(new_data["objective"], cur_data["pf"], occupied)):
+    for i, (obj, pf, ocpd) in enumerate(
+        zip(new_data["objective"], cur_data["pf"], occupied)
+    ):
         # Cannot add to PF here because adding here modifies PF for later
         #   solutions and creates bias.
         if ocpd:
@@ -213,7 +226,11 @@ def batch_entry_pf(indices, new_data, add_info, extra_args, occupied, cur_data):
             #   is 1/alpha of the original HVI
             value, status, discount = binary_search_discount(obj, pf, alpha, epsilon)
         else:
-            value, status, discount = abs(np.prod(obj))*alpha, AddStatus.NEW, alpha**(1./obj.size)
+            value, status, discount = (
+                abs(np.prod(obj)) * alpha,
+                AddStatus.NEW,
+                alpha ** (1.0 / obj.size),
+            )
 
         # If a solution has IMPROVE_EXISTING add status, and
         # its hypervolume improvement value < hvi_cutoff_threshold,
@@ -225,11 +242,15 @@ def batch_entry_pf(indices, new_data, add_info, extra_args, occupied, cur_data):
         ):
             value, status, discount = 0, AddStatus.NOT_ADDED, 1
 
-        add_info["value"][i], add_info["status"][i], add_info["discount"][i] = value, status, discount
+        add_info["value"][i], add_info["status"][i], add_info["discount"][i] = (
+            value,
+            status,
+            discount,
+        )
 
     is_new = ~occupied
     improve_existing = occupied & (add_info["status"] == AddStatus.IMPROVE_EXISTING)
-    can_insert = (is_new | improve_existing)
+    can_insert = is_new | improve_existing
 
     logger.info(
         f"Among {batch_size} generated solutions, {sum(is_new)} discover new cells, and {sum(improve_existing)} improve existing cells."
@@ -241,34 +262,34 @@ def batch_entry_pf(indices, new_data, add_info, extra_args, occupied, cur_data):
         return np.array([], dtype=np.int32), {}, add_info
 
     actually_inserted = np.full(np.sum(can_insert), True)
-    for i, (new_sol, new_obj, new_meas, pf, discount) in enumerate(zip(
-        new_data["solution"][can_insert],
-        new_data["objective"][can_insert],
-        new_data["measures"][can_insert],
-        cur_data["pf"][can_insert],
-        add_info["discount"][can_insert]
-    )):
+    for i, (new_sol, new_obj, new_meas, pf, discount) in enumerate(
+        zip(
+            new_data["solution"][can_insert],
+            new_data["objective"][can_insert],
+            new_data["measures"][can_insert],
+            cur_data["pf"][can_insert],
+            add_info["discount"][can_insert],
+        )
+    ):
         # Negated because objectives are in [0,100] range and need to be maximized
         # while NonDominatedList minimizes objectives
         # The solutions are actually inserted here instead of at the end of
         # ArrayStore.add() as in vanilla pyribs.
         # __import__("pdb").set_trace()
-        added_at = pf.add(new_sol, new_obj*discount, new_meas)
+        added_at = pf.add(new_sol, new_obj * discount, new_meas)
         if added_at is None:
             actually_inserted[i] = False
 
     # Pass downstream data for calculating MOQD scores and other archive status updates.
     # Remove duplicate indices (when multiple solutions are added to the same archive cell).
-    updated_indices, first_instance_indices = np.unique(indices[can_insert][actually_inserted], return_index=True)
+    updated_indices, first_instance_indices = np.unique(
+        indices[can_insert][actually_inserted], return_index=True
+    )
     updated_pfs = cur_data["pf"][can_insert][actually_inserted][first_instance_indices]
     downstream_data = {
         "pf": updated_pfs,
-        "hypervolume": list(
-            map(lambda pf: pf.hypervolume, updated_pfs)
-        ),
-        "numvisits": list(
-            map(lambda pf: pf.numvisits, updated_pfs)
-        )
+        "hypervolume": list(map(lambda pf: pf.hypervolume, updated_pfs)),
+        "numvisits": list(map(lambda pf: pf.numvisits, updated_pfs)),
     }
 
     return updated_indices, downstream_data, add_info
@@ -313,7 +334,9 @@ def compute_best_index(indices, new_data, add_info, extra_args, occupied, cur_da
     return indices, new_data, add_info
 
 
-def compute_total_numvisits(indices, new_data, add_info, extra_args, occupied, cur_data):
+def compute_total_numvisits(
+    indices, new_data, add_info, extra_args, occupied, cur_data
+):
     cur_total_numvisits = extra_args["total_numvisits"]
     if len(indices) == 0:
         add_info["total_numvisits"] = cur_total_numvisits
@@ -352,4 +375,3 @@ def grid_archive_heatmap(*args, **kwargs):
     #     "pf"
     # )])
     ribs.visualize.grid_archive_heatmap(archive_temp, *args[1:], **kwargs)
-
